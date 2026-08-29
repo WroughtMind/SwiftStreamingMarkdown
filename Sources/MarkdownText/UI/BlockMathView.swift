@@ -24,7 +24,8 @@ struct BlockMathView: UIViewRepresentable {
     label.font = Self.mathFont(pointSize: pointSize)
     label.latex = latex
     label.textColor = UIColor(color)
-    label.displayErrorInline = _isDebugAssertConfiguration()
+    label.backgroundColor = .clear
+    label.displayErrorInline = true
     label.labelMode = .display
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     return label
@@ -68,7 +69,9 @@ struct BlockMathView: NSViewRepresentable {
     label.font = Self.mathFont(pointSize: pointSize)
     label.latex = latex
     label.textColor = NSColor(color)
-    label.displayErrorInline = _isDebugAssertConfiguration()
+    label.wantsLayer = true
+    label.layer?.backgroundColor = NSColor.clear.cgColor
+    label.displayErrorInline = true
     label.labelMode = .display
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     return label

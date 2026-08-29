@@ -98,7 +98,15 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
     label.font = mathFont
     label.latex = latex
     label.textColor = textColor
-    label.displayErrorInline = _isDebugAssertConfiguration()
+    #if canImport(UIKit)
+    label.backgroundColor = .clear
+    #elseif canImport(AppKit)
+    label.wantsLayer = true
+    label.layer?.backgroundColor = NSColor.clear.cgColor
+    #endif
+    // A malformed formula must remain visible in production instead of
+    // collapsing into an empty attachment.
+    label.displayErrorInline = true
     label.labelMode = .text
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     self.view = label
