@@ -347,6 +347,20 @@ final class LaTexPreProcessorTests: XCTestCase {
     )
     XCTAssertEqual(stable, "完成段落\n")
 
+    let ordinaryMarkdownBrackets = """
+    [标题]
+    [链接](https://example.com)
+    [[来源标签]]
+    """
+    XCTAssertEqual(
+      preprocessor.process(
+        input: ordinaryMarkdownBrackets,
+        matchingRules: MarkdownParseOption.LatexMatching.allCases,
+        withholdIncompleteMath: true
+      ),
+      ordinaryMarkdownBrackets
+    )
+
     let commandsThatMustNotBeRewritten =
       #"\(\boxed{x} + \overrightarrow{AB} + \implies + \rightleftharpoons\)"#
     let preservedCommands = preprocessor.process(input: commandsThatMustNotBeRewritten)
