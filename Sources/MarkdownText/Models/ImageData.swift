@@ -23,6 +23,8 @@ struct ImageData: Equatable, Sendable {
     /// file name and extension (e.g. `logo.png` → `fileName: "logo"`,
     /// `ext: "png"`).
     case bundledResource(fileName: String, ext: String)
+    /// A file whose standardized path is contained by the configured base directory.
+    case localFile(URL)
   }
 
   /// The permitted image source, or `nil` when the source is missing,
@@ -62,6 +64,8 @@ struct ImageData: Equatable, Sendable {
         return nil
       }
       return MarkdownImage(source: .bundledResource(data: data), alt: alt)
+    case .localFile(let url):
+      return MarkdownImage(source: .localFile(url), alt: alt)
     }
   }
 }

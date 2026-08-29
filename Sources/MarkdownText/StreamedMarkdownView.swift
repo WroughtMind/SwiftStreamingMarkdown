@@ -87,7 +87,14 @@ final class StreamedMarkdownController: ObservableObject {
       guard let self else { return }
       for await text in self.source.text {
         if Task.isCancelled { return }
-        let renderable = await self.parser.parse(text: text, config: self.config)
+        let parsed = await self.parser.parse(
+          text: text,
+          option: .init(
+            speculativeRewrite: true,
+            imageSupport: self.config.imageConfig.enabled
+          )
+        )
+        let renderable = await RenderableDocument(document: parsed.document, config: self.config)
         if Task.isCancelled { return }
         await MainActor.run {
           self.markdownToRender = renderable

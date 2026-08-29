@@ -4,7 +4,7 @@
 //
 
 import Foundation
-import iosMath
+import SwiftMath
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -89,10 +89,17 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
 
   override func loadView() {
     let label = MTMathUILabel()
+    let mathFont = MTFontManager().latinModernFont(withSize: fontSize)
+    #if canImport(UIKit)
+    mathFont?.fallbackFont = UIFont.systemFont(ofSize: fontSize)
+    #elseif canImport(AppKit)
+    mathFont?.fallbackFont = NSFont.systemFont(ofSize: fontSize)
+    #endif
+    label.font = mathFont
     label.latex = latex
     label.textColor = textColor
-    label.displayErrorInline = false
-    label.fontSize = fontSize
+    label.displayErrorInline = _isDebugAssertConfiguration()
+    label.labelMode = .text
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     self.view = label
   }

@@ -22,15 +22,38 @@ extension ImageConfig {
     case "assets":
       guard allowsAssetCatalog, let name = url.assetCatalogName else { return nil }
       return .assetCatalog(name: name)
+    case "file":
+      return resolvedLocalFile(url)
     case .some:
       // An explicit but unsupported scheme (e.g. `file`, `data`, plain `http`).
       return nil
     case .none:
+      if let base = localBaseDirectory,
+         let local = resolvedLocalFile(
+           URL(fileURLWithPath: rawSource, relativeTo: base)
+         ) {
+        return local
+      }
       guard allowsBundledResource, let resource = rawSource.bundledResourceComponents else {
         return nil
       }
       return .bundledResource(fileName: resource.fileName, ext: resource.ext)
     }
+  }
+
+  private var localBaseDirectory: URL? {
+    for case .localFile(let baseDirectory) in allowedImageTypes {
+      return baseDirectory.standardizedFileURL
+    }
+    return nil
+  }
+
+  private func resolvedLocalFile(_ url: URL) -> ImageData.Source? {
+    guard let base = localBaseDirectory else { return nil }
+    let candidate = url.standardizedFileURL
+    let basePath = base.path.hasSuffix("/") ? base.path : base.path + "/"
+    guard candidate.path == base.path || candidate.path.hasPrefix(basePath) else { return nil }
+    return .localFile(candidate)
   }
 
   /// Whether an `https` image served from `host` is permitted by a configured

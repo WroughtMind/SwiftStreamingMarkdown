@@ -54,6 +54,14 @@ struct BlockImageView: View {
         .scaledToFit()
     case .bundledResource(let fileName, let ext):
       BundledResourceImage(fileName: fileName, ext: ext)
+    case .localFile(let url):
+      if let image = MDImage(contentsOfFile: url.path) {
+        Image(mdImage: image)
+          .resizable()
+          .scaledToFit()
+      } else {
+        BlockImageFailureView()
+      }
     case nil:
       BlockImageFailureView()
     }

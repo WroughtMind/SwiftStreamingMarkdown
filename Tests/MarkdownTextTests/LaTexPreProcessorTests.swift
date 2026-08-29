@@ -5,6 +5,7 @@
 
 import Foundation
 import Markdown
+import SwiftMath
 @testable import SwiftStreamingMarkdown
 import XCTest
 
@@ -171,7 +172,7 @@ final class LaTexPreProcessorTests: XCTestCase {
     ```
 
     ```blockmath
-    f^\\prime(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}
+    f'(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}
     ```
 
     ```blockmath
@@ -258,20 +259,20 @@ final class LaTexPreProcessorTests: XCTestCase {
     let processed = preprocessor.process(input: text)
     let expected = """
     ```blockmath
-    \\varphi(x) = f(x) - (f(a) + f^\\prime(a)(x-a)).
+    \\varphi(x) = f(x) - \\big(f(a) + f'(a)(x-a)\\big).
     ```
 
-    - Vector `\\(\\vec{FA} = (a+c,0)\\)`
+    - Vector `\\(\\overrightarrow{FA} = (a+c,0)\\)`
 
     ```blockmath
-    2+2(2q-1) = 2q^2 \\Rightarrow 2+4q-2 = 2q^2 \\Rightarrow 4q = 2q^2 \\Rightarrow q^2 - 2q = 0.
+    2+2(2q-1) = 2q^2 \\implies 2+4q-2 = 2q^2 \\implies 4q = 2q^2 \\implies q^2 - 2q = 0.
     ```
 
     ```blockmath
-    Fe^{3+}_{(aq)} + xCl^-_{(aq)} \\Leftrightarrow [FeCl_x]^{3-x}_{(aq)} \\quad (x = 1,2,3,4)
+    Fe^{3+}_{(aq)} + xCl^-_{(aq)} \\rightleftharpoons [FeCl_x]^{3-x}_{(aq)} \\quad (x = 1,2,3,4)
     ```
 
-    `\\(a_1, \\ldots, a_n\\)`
+    `\\(a_1, \\dots, a_n\\)`
     """
     XCTAssertEqual(expected, processed)
   }
@@ -310,5 +311,47 @@ final class LaTexPreProcessorTests: XCTestCase {
       matchingRules: [.inlineSlashBracket, .blockSlashBracket]
     )
     XCTAssertEqual(processed, expected)
+  }
+
+  func testWeiBeiFormulaContract() {
+    let formulas = [
+      #"\frac{a}{b} + \tfrac{c}{d} + \dfrac{e}{f}"#,
+      #"\hat{x} + \widehat{wage} + \beta"#,
+      #"\sqrt{x} + \sum_{i=1}^{n} i + \partial_x f + \left\{x^2\right\}"#,
+      #"\text{中文数学}，x_1^2"#,
+    ]
+    let markdown = formulas.enumerated().map { index, formula in
+      index.isMultiple(of: 2) ? "\\(\(formula)\\)" : "$$\(formula)$$"
+    }.joined(separator: "\n")
+    let processed = preprocessor.process(input: markdown)
+
+    for command in [
+      #"\frac"#, #"\tfrac"#, #"\dfrac"#, #"\hat"#, #"\widehat"#,
+      #"\beta"#, #"\sqrt"#, #"\sum"#, #"\partial"#, #"\text{中文数学}"#,
+    ] {
+      XCTAssertTrue(processed.contains(command), "preprocessor changed \(command)")
+    }
+
+    for formula in formulas {
+      var error: NSError?
+      let list = MTMathListBuilder.build(fromString: formula, error: &error)
+      XCTAssertNil(error, formula)
+      XCTAssertFalse(list?.atoms.isEmpty ?? true, formula)
+    }
+
+    let incomplete = "完成段落\n\\(\\widehat{wage}"
+    let stable = preprocessor.process(
+      input: incomplete,
+      matchingRules: MarkdownParseOption.LatexMatching.allCases,
+      withholdIncompleteMath: true
+    )
+    XCTAssertEqual(stable, "完成段落\n")
+
+    let commandsThatMustNotBeRewritten =
+      #"\(\boxed{x} + \overrightarrow{AB} + \implies + \rightleftharpoons\)"#
+    let preservedCommands = preprocessor.process(input: commandsThatMustNotBeRewritten)
+    for command in [#"\boxed"#, #"\overrightarrow"#, #"\implies"#, #"\rightleftharpoons"#] {
+      XCTAssertTrue(preservedCommands.contains(command), "preprocessor changed \(command)")
+    }
   }
 }

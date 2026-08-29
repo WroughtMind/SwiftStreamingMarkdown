@@ -21,6 +21,8 @@ public struct MarkdownImage: Equatable, Sendable {
     /// A loose image resource from the app's main bundle, delivered as its raw
     /// file bytes.
     case bundledResource(data: Data)
+    /// A local file already confined to the consumer-configured base directory.
+    case localFile(URL)
   }
 
   /// The resolved image source.

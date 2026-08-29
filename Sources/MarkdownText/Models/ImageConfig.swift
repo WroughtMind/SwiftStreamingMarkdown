@@ -38,6 +38,10 @@ public struct ImageConfig: Hashable, Sendable {
     /// Maps from scheme-less relative paths, e.g. `![logo](logo.png)` or
     /// `![logo](./logo.png)`.
     case bundledResource
+
+    /// Local images resolved beneath one explicit directory. Relative paths
+    /// and file URLs that escape that directory are rejected.
+    case localFile(baseDirectory: URL)
   }
 
   /// Whether Markdown images are rendered as block-level content.

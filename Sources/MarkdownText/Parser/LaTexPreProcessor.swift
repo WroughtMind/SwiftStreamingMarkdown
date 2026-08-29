@@ -9,12 +9,24 @@ import RegexBuilder
 /// Pre-process the inline and block latex in markdown.
 /// This is a less heavy-weight approach than forking commonmark-gfm and swift-markdown to support parsing latex nodes.
 protocol LaTexPreProcessor {
-  func process(input: String, matchingRules: [MarkdownParseOption.LatexMatching]) -> String
+  func process(
+    input: String,
+    matchingRules: [MarkdownParseOption.LatexMatching],
+    withholdIncompleteMath: Bool
+  ) -> String
 }
 
 extension LaTexPreProcessor {
   func process(input: String) -> String {
-    return process(input: input, matchingRules: MarkdownParseOption.LatexMatching.allCases)
+    process(
+      input: input,
+      matchingRules: MarkdownParseOption.LatexMatching.allCases,
+      withholdIncompleteMath: false
+    )
+  }
+
+  func process(input: String, matchingRules: [MarkdownParseOption.LatexMatching]) -> String {
+    process(input: input, matchingRules: matchingRules, withholdIncompleteMath: false)
   }
 }
 
@@ -61,69 +73,9 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     "\\)"
   }
 
-  static let boxedLatex = Regex {
-    Capture {
-      "\\boxed"
-    }
-  }
-
-  static let dfracLatex = Regex {
-    Capture {
-      "\\dfrac"
-    }
-  }
-
-  static let tfracLatex = Regex {
-    Capture {
-      "\\tfrac"
-    }
-  }
-
-  static let bracketSize = Regex {
-    Capture {
-      ChoiceOf {
-        "\\bigl"
-        "\\biggl"
-        "\\Bigl"
-        "\\Biggl"
-        "\\bigr"
-        "\\biggr"
-        "\\Bigr"
-        "\\Biggr"
-        "\\big"
-      }
-    }
-  }
-
-  static let primeLatex = Regex {
-    Capture {
-      "'"
-    }
-  }
-
-  static let vectorLatex = Regex {
-    Capture {
-      "\\overrightarrow"
-    }
-  }
-
-  static let rightArrowLatex = Regex {
-    Capture {
-      "\\implies"
-    }
-  }
-
-  static let harpoonsLatex = Regex {
-    Capture {
-      "\\rightleftharpoons"
-    }
-  }
-
-  static let dotsLatex = Regex {
-    Capture {
-      "\\dots"
-    }
-  }
+  static let inlineDollarMath = try? NSRegularExpression(
+    pattern: #"(?<![\\$])\$(?![\s$])((?:\\.|[^$\n])+?)(?<!\\)\$(?![$\d])"#
+  )
 
   static let customCodeType = "blockmath"
   static let inlineCodePrefix = "\\("
@@ -132,9 +84,14 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
 
   init() {}
 
-  func process(input: String, matchingRules: [MarkdownParseOption.LatexMatching]) -> String {
+  func process(
+    input: String,
+    matchingRules: [MarkdownParseOption.LatexMatching],
+    withholdIncompleteMath: Bool
+  ) -> String {
     let rules = Set(matchingRules)
-    let result = processBlockMath(input: input, rules: rules)
+    let stableInput = withholdIncompleteMath ? Self.stableStreamingPrefix(input) : input
+    let result = processBlockMath(input: stableInput, rules: rules)
     return processInlineMath(input: result, rules: rules)
   }
 
@@ -161,11 +118,21 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
 
   /// This wraps inline math as inline code to avoid over-unescaping issue
   func processInlineMath(input: String, rules: Set<MarkdownParseOption.LatexMatching>) -> String {
-    guard rules.contains(.inlineSlashBracket) else { return input }
-    return input.replacing(Self.inlineParenthesisMath, with: { match in
-      let latex = String(match[Self.latexRef]).filteringUnsupportedSyntaxes()
-      return "`\\(\(latex)\\)`"
-    })
+    var result = input
+    if rules.contains(.inlineSlashBracket) {
+      result = result.replacing(Self.inlineParenthesisMath, with: { match in
+        "`\\(\(match[Self.latexRef])\\)`"
+      })
+    }
+    if rules.contains(.inlineDollar), let inlineDollarMath = Self.inlineDollarMath {
+      let range = NSRange(result.startIndex..<result.endIndex, in: result)
+      for match in inlineDollarMath.matches(in: result, range: range).reversed() {
+        guard let fullRange = Range(match.range, in: result),
+              let latexRange = Range(match.range(at: 1), in: result) else { continue }
+        result.replaceSubrange(fullRange, with: "`\\(\(result[latexRange])\\)`")
+      }
+    }
+    return result
   }
 
   // MARK: - Convenience overloads (default to every supported rule)
@@ -179,65 +146,66 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
   }
 
   private static func buildCodeBlock(indentation: Substring, latex: Substring) -> String {
-    let processedLatex = latex.trimmingCharacters(in: .newlines).filteringUnsupportedSyntaxes()
+    let processedLatex = latex.trimmingCharacters(in: .newlines)
     let nextLineIntendation = latex.hasPrefix(Self.newline) ? "" : indentation
     return "\(indentation)```\(Self.customCodeType)\(Self.newline)\(nextLineIntendation)\(processedLatex)\(Self.newline)\(indentation)```"
   }
-}
 
-extension String {
+  /// Drops only an unfinished trailing formula while a streamed snapshot is
+  /// still growing. Complete formulas and their original commands are untouched.
+  static func stableStreamingPrefix(_ input: String) -> String {
+    var cut = input.endIndex
 
-  func filteringUnsupportedSyntaxes() -> String {
-    return self
-      .strippingBoxedLatex()
-      .replacingfrac()
-      .replacingPrime()
-      .replacingVector()
-      .replacingImplies()
-      .replacingHarpoons()
-      .replacingDots()
-      .strippingBracketSizeCommands()
-  }
+    func considerUnclosed(open: String, close: String) {
+      guard let openRange = input.range(of: open, options: .backwards) else { return }
+      let closeRange = input.range(of: close, options: .backwards)
+      if closeRange == nil || openRange.lowerBound > closeRange!.lowerBound {
+        cut = min(cut, openRange.lowerBound)
+      }
+    }
 
-  /// This strips "\boxed" string from a given latex. This is because our rendering engine does not support \boxed{...} yet.
-  func strippingBoxedLatex() -> String {
-    return self.replacing(LaTexPreProcessorImpl.boxedLatex, with: "")
-  }
+    considerUnclosed(open: "\\(", close: "\\)")
+    considerUnclosed(open: "\\[", close: "\\]")
 
-  /// Replacing `dfrac` and `tfac` which is unsupported into simple `frac`
-  func replacingfrac() -> String {
-    return self
-      .replacing(LaTexPreProcessorImpl.dfracLatex, with: "\\frac")
-      .replacing(LaTexPreProcessorImpl.tfracLatex, with: "\\frac")
-  }
+    var blockDollarRanges: [Range<String.Index>] = []
+    var searchStart = input.startIndex
+    while let range = input.range(of: "$$", range: searchStart..<input.endIndex) {
+      blockDollarRanges.append(range)
+      searchStart = range.upperBound
+    }
+    if blockDollarRanges.count.isMultiple(of: 2) == false,
+       let opening = blockDollarRanges.last {
+      cut = min(cut, opening.lowerBound)
+    }
 
-  /// Replacing `'` which is unsupported into `^prime`
-  func replacingPrime() -> String {
-    return self.replacing(LaTexPreProcessorImpl.primeLatex, with: "^\\prime")
-  }
+    let lineStart = input.lastIndex(of: "\n").map(input.index(after:)) ?? input.startIndex
+    var inlineDollarOpen: String.Index?
+    var index = lineStart
+    while index < input.endIndex {
+      let next = input.index(after: index)
+      guard input[index] == "$" else {
+        index = next
+        continue
+      }
+      let previous = index > input.startIndex ? input[input.index(before: index)] : nil
+      let following = next < input.endIndex ? input[next] : nil
+      if previous == "\\" || previous == "$" || following == "$" {
+        index = next
+        continue
+      }
+      if inlineDollarOpen == nil {
+        if let following, !following.isWhitespace {
+          inlineDollarOpen = index
+        }
+      } else if following?.isNumber != true {
+        inlineDollarOpen = nil
+      }
+      index = next
+    }
+    if let inlineDollarOpen {
+      cut = min(cut, inlineDollarOpen)
+    }
 
-  /// Replacing `overrightarrow` which is unsupported into `vec`
-  func replacingVector() -> String {
-    return self.replacing(LaTexPreProcessorImpl.vectorLatex, with: "\\vec")
-  }
-
-  /// Replacing `implies` which is unsupported into `Rightarrow`
-  func replacingImplies() -> String {
-    return self.replacing(LaTexPreProcessorImpl.rightArrowLatex, with: "\\Rightarrow")
-  }
-
-  /// Replacing `harpoons` which is unsupported into `Leftrightarrow`
-  func replacingHarpoons() -> String {
-    return self.replacing(LaTexPreProcessorImpl.harpoonsLatex, with: "\\Leftrightarrow")
-  }
-
-  /// Replacing `dots` which is unsupported into `ldots`
-  func replacingDots() -> String {
-    return self.replacing(LaTexPreProcessorImpl.dotsLatex, with: "\\ldots")
-  }
-
-  /// Stripping commands to specify bracket sizes(`\Biggl` etc) which is unsupported
-  func strippingBracketSizeCommands() -> String {
-    return self.replacing(LaTexPreProcessorImpl.bracketSize, with: "")
+    return cut < input.endIndex ? String(input[..<cut]) : input
   }
 }

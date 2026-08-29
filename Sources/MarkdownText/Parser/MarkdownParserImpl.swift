@@ -24,7 +24,11 @@ public final class MarkdownParserImpl: MarkdownParser {
 
   /// Parse `text` into a `MarkdownParseResult`. See `MarkdownParser.parse(text:option:)`.
   public func parse(text: String, option: MarkdownParseOption) async -> MarkdownParseResult {
-    let targetString = latexPreprocessor.process(input: text, matchingRules: option.latexMatchingRules)
+    let targetString = latexPreprocessor.process(
+      input: text,
+      matchingRules: option.latexMatchingRules,
+      withholdIncompleteMath: option.speculativeRewrite
+    )
 
     var result: MarkdownParseResult = MarkdownParseResult(
       document: Document(parsing: targetString),

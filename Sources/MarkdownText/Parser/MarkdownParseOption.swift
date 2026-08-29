@@ -42,6 +42,8 @@ public struct MarkdownParseOption {
   /// The set of delimiter forms the LaTeX preprocessor will recognize. Omitting
   /// a case leaves text matching that delimiter as plain markdown.
   public enum LatexMatching: String, Hashable, CaseIterable {
+    /// Inline LaTeX delimited by `$` … `$`.
+    case inlineDollar
     /// Inline LaTeX delimited by `\(` … `\)`.
     case inlineSlashBracket
     /// Block LaTeX delimited by `$$` … `$$`.

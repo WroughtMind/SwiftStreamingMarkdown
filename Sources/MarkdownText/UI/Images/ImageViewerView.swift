@@ -78,6 +78,12 @@ struct ImageViewerView: View {
       PinchZoomView(image: Image(name), onSwipeToDismiss: onDismiss)
     case .bundledResource(let fileName, let ext):
       BundledResourceZoomView(fileName: fileName, ext: ext, onSwipeToDismiss: onDismiss)
+    case .localFile(let url):
+      if let image = MDImage(contentsOfFile: url.path) {
+        PinchZoomView(image: Image(mdImage: image), onSwipeToDismiss: onDismiss)
+      } else {
+        BlockImageFailureView()
+      }
     }
   }
 

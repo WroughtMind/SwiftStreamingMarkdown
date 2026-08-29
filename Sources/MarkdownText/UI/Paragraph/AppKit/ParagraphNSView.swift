@@ -5,7 +5,7 @@
 
 #if canImport(AppKit)
 import AppKit
-import iosMath
+import SwiftMath
 import QuartzCore
 import SwiftUI
 import UniformTypeIdentifiers

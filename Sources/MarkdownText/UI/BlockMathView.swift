@@ -4,7 +4,7 @@
 //
 
 import SwiftUI
-import iosMath
+import SwiftMath
 
 #if canImport(UIKit)
 
@@ -21,16 +21,18 @@ struct BlockMathView: UIViewRepresentable {
 
   func makeUIView(context: Context) -> MTMathUILabel {
     let label = MTMathUILabel()
+    label.font = Self.mathFont(pointSize: pointSize)
     label.latex = latex
     label.textColor = UIColor(color)
-    label.displayErrorInline = false
-    label.fontSize = pointSize
+    label.displayErrorInline = _isDebugAssertConfiguration()
+    label.labelMode = .display
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     return label
   }
 
   func updateUIView(_ uiView: MTMathUILabel, context: Context) {
     uiView.textColor = UIColor(color)
+    uiView.font = Self.mathFont(pointSize: pointSize)
     uiView.latex = latex
   }
 
@@ -39,6 +41,12 @@ struct BlockMathView: UIViewRepresentable {
     let size = uiView.bounds.size
     // It's a known issue that MTMathUILabel may be cut off for some short statement. Manually add 1 to the height fix it.
     return CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up) + 1)
+  }
+
+  private static func mathFont(pointSize: CGFloat) -> MTFont? {
+    let font = MTFontManager().latinModernFont(withSize: pointSize)
+    font?.fallbackFont = UIFont.systemFont(ofSize: pointSize)
+    return font
   }
 }
 
@@ -57,22 +65,30 @@ struct BlockMathView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> MTMathUILabel {
     let label = MTMathUILabel()
+    label.font = Self.mathFont(pointSize: pointSize)
     label.latex = latex
     label.textColor = NSColor(color)
-    label.displayErrorInline = false
-    label.fontSize = pointSize
+    label.displayErrorInline = _isDebugAssertConfiguration()
+    label.labelMode = .display
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     return label
   }
 
   func updateNSView(_ nsView: MTMathUILabel, context: Context) {
     nsView.textColor = NSColor(color)
+    nsView.font = Self.mathFont(pointSize: pointSize)
     nsView.latex = latex
   }
 
   func sizeThatFits(_ proposal: ProposedViewSize, nsView: MTMathUILabel, context: Context) -> CGSize? {
     let size = nsView.intrinsicContentSize
     return CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up) + 1)
+  }
+
+  private static func mathFont(pointSize: CGFloat) -> MTFont? {
+    let font = MTFontManager().latinModernFont(withSize: pointSize)
+    font?.fallbackFont = NSFont.systemFont(ofSize: pointSize)
+    return font
   }
 }
 
