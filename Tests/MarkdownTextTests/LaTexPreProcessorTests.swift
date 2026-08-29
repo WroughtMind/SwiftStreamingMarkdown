@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import CoreText
 import Markdown
 import SwiftMath
 @testable import SwiftStreamingMarkdown
@@ -313,16 +314,29 @@ final class LaTexPreProcessorTests: XCTestCase {
     XCTAssertEqual(processed, expected)
   }
 
-  func testWeiBeiFormulaContract() {
+  func testWeiBeiFormulaContract() throws {
+    for plain in ["", "完成段落\n"] {
+      XCTAssertEqual(
+        preprocessor.process(
+          input: plain,
+          matchingRules: MarkdownParseOption.LatexMatching.allCases,
+          withholdIncompleteMath: true
+        ),
+        plain
+      )
+    }
     let formulas = [
       #"\frac{a}{b} + \tfrac{c}{d} + \dfrac{e}{f}"#,
       #"\hat{x} + \widehat{wage} + \beta"#,
       #"\sqrt{x} + \sum_{i=1}^{n} i + \partial_x f + \left\{x^2\right\}"#,
       #"\text{中文数学}，x_1^2"#,
     ]
-    let markdown = formulas.enumerated().map { index, formula in
-      index.isMultiple(of: 2) ? "\\(\(formula)\\)" : "$$\(formula)$$"
-    }.joined(separator: "\n")
+    let markdown = [
+      "\\(\(formulas[0])\\)",
+      "$\(formulas[1])$",
+      "$$\(formulas[2])$$",
+      "\\[\n\(formulas[3])\n\\]",
+    ].joined(separator: "\n")
     let processed = preprocessor.process(input: markdown)
 
     for command in [
@@ -339,6 +353,36 @@ final class LaTexPreProcessorTests: XCTestCase {
       XCTAssertFalse(list?.atoms.isEmpty ?? true, formula)
     }
 
+    let fallback = try XCTUnwrap(CTFontCreateUIFontForLanguage(.system, 16, nil))
+    let mathFont = MathFont.latinModernFont.mtfont(size: 16)
+    mathFont.fallbackFont = fallback
+    for size: CGFloat in [16, 11] {
+      let resizedFont = mathFont.copy(withSize: size)
+      let resizedFallback = try XCTUnwrap(resizedFont.fallbackFont)
+      XCTAssertEqual(CTFontGetSize(resizedFallback), size)
+
+      let textRun = resizedFont.attributedStringWithFallback(for: "中文")
+      for location in 0..<textRun.length {
+        let fontAttribute = try XCTUnwrap(
+          textRun.attribute(
+            kCTFontAttributeName as NSAttributedString.Key,
+            at: location,
+            effectiveRange: nil
+          )
+        )
+        let resolvedFont = fontAttribute as! CTFont
+        var character = Array((textRun.string as NSString).substring(with: NSRange(location: location, length: 1)).utf16)
+        var glyph = [CGGlyph](repeating: 0, count: character.count)
+        XCTAssertTrue(CTFontGetGlyphsForCharacters(
+          resolvedFont,
+          &character,
+          &glyph,
+          character.count
+        ))
+        XCTAssertTrue(glyph.allSatisfy { $0 != 0 })
+      }
+    }
+
     let incomplete = "完成段落\n\\(\\widehat{wage}"
     let stable = preprocessor.process(
       input: incomplete,
@@ -346,6 +390,26 @@ final class LaTexPreProcessorTests: XCTestCase {
       withholdIncompleteMath: true
     )
     XCTAssertEqual(stable, "完成段落\n")
+
+    let incompleteDollar = "完成段落\n$\\widehat{wage}"
+    XCTAssertEqual(
+      preprocessor.process(
+        input: incompleteDollar,
+        matchingRules: MarkdownParseOption.LatexMatching.allCases,
+        withholdIncompleteMath: true
+      ),
+      incompleteDollar
+    )
+
+    let incompleteSlashBracket = "完成段落\n\\[\\sum_{i=1}^{n}"
+    XCTAssertEqual(
+      preprocessor.process(
+        input: incompleteSlashBracket,
+        matchingRules: MarkdownParseOption.LatexMatching.allCases,
+        withholdIncompleteMath: true
+      ),
+      "完成段落\n"
+    )
 
     let ordinaryMarkdownBrackets = """
     [标题]
@@ -361,11 +425,68 @@ final class LaTexPreProcessorTests: XCTestCase {
       ordinaryMarkdownBrackets
     )
 
+    let ordinaryDollarText = """
+    价格是 $100
+    行内代码是 `$x$`
+    ```sh
+    echo "$PATH $HOME"
+    ```
+    """
+    XCTAssertEqual(
+      preprocessor.process(
+        input: ordinaryDollarText,
+        matchingRules: MarkdownParseOption.LatexMatching.allCases,
+        withholdIncompleteMath: true
+      ),
+      ordinaryDollarText
+    )
+
     let commandsThatMustNotBeRewritten =
       #"\(\boxed{x} + \overrightarrow{AB} + \implies + \rightleftharpoons\)"#
     let preservedCommands = preprocessor.process(input: commandsThatMustNotBeRewritten)
     for command in [#"\boxed"#, #"\overrightarrow"#, #"\implies"#, #"\rightleftharpoons"#] {
       XCTAssertTrue(preservedCommands.contains(command), "preprocessor changed \(command)")
+    }
+    var preservedError: NSError?
+    let preservedList = MTMathListBuilder.build(
+      fromString: #"\boxed{x} + \overrightarrow{AB} + \implies + \rightleftharpoons"#,
+      error: &preservedError
+    )
+    XCTAssertNil(preservedError)
+    XCTAssertFalse(preservedList?.atoms.isEmpty ?? true)
+
+    func renderedText(in display: MTDisplay) -> String {
+      if let line = display as? MTCTLineDisplay {
+        return line.atoms.map(\.nucleus).joined()
+      }
+      if let list = display as? MTMathListDisplay {
+        return list.subDisplays.map { renderedText(in: $0) }.joined()
+      }
+      return ""
+    }
+
+    let displayFormula = #"\boxed{\widehat{wage}}，\overrightarrow{AB} + \sum_{i=1}^{n} i + x_{\text{中文}}"#
+    for size: CGFloat in [16, 13] {
+      let label = MTMathUILabel(frame: .zero)
+      label.font = mathFont.copy(withSize: size)
+      label.labelMode = .display
+      label.latex = displayFormula
+      XCTAssertNil(label.error)
+      let fitted = label.sizeThatFits(.zero)
+      XCTAssertGreaterThan(fitted.width, 0)
+      XCTAssertGreaterThan(fitted.height, 0)
+      label.frame = CGRect(origin: .zero, size: fitted)
+      #if os(macOS)
+      label.layout()
+      #else
+      label.layoutIfNeeded()
+      #endif
+      let display = try XCTUnwrap(label.displayList)
+      XCTAssertGreaterThan(display.width, 0)
+      XCTAssertGreaterThan(display.ascent + display.descent, 0)
+      let nativeTextRuns = renderedText(in: display)
+      XCTAssertTrue(nativeTextRuns.contains("，"))
+      XCTAssertTrue(nativeTextRuns.contains("中文"))
     }
   }
 }

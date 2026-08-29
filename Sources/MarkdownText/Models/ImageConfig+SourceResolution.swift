@@ -43,14 +43,14 @@ extension ImageConfig {
 
   private var localBaseDirectory: URL? {
     for case .localFile(let baseDirectory) in allowedImageTypes {
-      return baseDirectory.standardizedFileURL
+      return baseDirectory.resolvingSymlinksInPath().standardizedFileURL
     }
     return nil
   }
 
   private func resolvedLocalFile(_ url: URL) -> ImageData.Source? {
     guard let base = localBaseDirectory else { return nil }
-    let candidate = url.standardizedFileURL
+    let candidate = url.resolvingSymlinksInPath().standardizedFileURL
     let basePath = base.path.hasSuffix("/") ? base.path : base.path + "/"
     guard candidate.path == base.path || candidate.path.hasPrefix(basePath) else { return nil }
     return .localFile(candidate)

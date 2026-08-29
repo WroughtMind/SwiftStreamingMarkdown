@@ -73,8 +73,8 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     "\\)"
   }
 
-  static let inlineDollarMath = try? NSRegularExpression(
-    pattern: #"(?<![\\$])\$(?![\s$])((?:\\.|[^$\n])+?)(?<!\\)\$(?![$\d])"#
+  static let inlineDollarMath = try! NSRegularExpression(
+    pattern: #"(?<![\\$])\$(?![\s$])((?:\\.|[^$\n])+?)(?<!\\)\$(?!\$)"#
   )
 
   static let customCodeType = "blockmath"
@@ -90,49 +90,118 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     withholdIncompleteMath: Bool
   ) -> String {
     let rules = Set(matchingRules)
-    let stableInput = withholdIncompleteMath ? Self.stableStreamingPrefix(input) : input
-    let result = processBlockMath(input: stableInput, rules: rules)
-    return processInlineMath(input: result, rules: rules)
+    let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
+    let stableInput = withholdIncompleteMath
+      ? Self.stableStreamingPrefix(input, codeRanges: codeRanges)
+      : input
+    let blocks = blockReplacements(in: stableInput, rules: rules, codeRanges: codeRanges)
+    return applying(
+      blocks + inlineReplacements(
+        in: stableInput,
+        rules: rules,
+        codeRanges: codeRanges,
+        blockRanges: blocks.map(\.range)
+      ),
+      to: stableInput
+    )
   }
 
   /// This replace block math with a special code block node. By treating it as a code block it will avoid over escaping characters within latex.
   func processBlockMath(input: String, rules: Set<MarkdownParseOption.LatexMatching>) -> String {
-    var result = input
-    if rules.contains(.blockDollar) {
-      result.replace(Self.dollarBlockMath, with: { match in
-        let indentation = match[Self.latexOpenIndentation]
-        let latex = match[Self.latexRef]
-        return Self.buildCodeBlock(indentation: indentation, latex: latex)
-      })
-    }
+    let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
+    return applying(blockReplacements(in: input, rules: rules, codeRanges: codeRanges), to: input)
+  }
 
-    if rules.contains(.blockSlashBracket) {
-      result.replace(Self.slashBracketMath, with: { match in
-        let indentation = match[Self.latexOpenIndentation]
-        let latex = match[Self.latexRef]
-        return Self.buildCodeBlock(indentation: indentation, latex: latex)
-      })
+  private struct Replacement {
+    let range: NSRange
+    let value: String
+  }
+
+  private func blockReplacements(
+    in input: String,
+    rules: Set<MarkdownParseOption.LatexMatching>,
+    codeRanges: [NSRange]
+  ) -> [Replacement] {
+    var replacements: [Replacement] = []
+    if rules.contains(.blockDollar) {
+      for match in input.matches(of: Self.dollarBlockMath) {
+        let range = NSRange(match.range, in: input)
+        guard !Self.overlaps(range, codeRanges) else { continue }
+        replacements.append(Replacement(
+          range: range,
+          value: Self.buildCodeBlock(
+            indentation: match[Self.latexOpenIndentation],
+            latex: match[Self.latexRef]
+          )
+        ))
+      }
     }
-    return result
+    if rules.contains(.blockSlashBracket) {
+      for match in input.matches(of: Self.slashBracketMath) {
+        let range = NSRange(match.range, in: input)
+        guard !Self.overlaps(range, codeRanges + replacements.map(\.range)) else { continue }
+        replacements.append(Replacement(
+          range: range,
+          value: Self.buildCodeBlock(
+            indentation: match[Self.latexOpenIndentation],
+            latex: match[Self.latexRef]
+          )
+        ))
+      }
+    }
+    return replacements
   }
 
   /// This wraps inline math as inline code to avoid over-unescaping issue
   func processInlineMath(input: String, rules: Set<MarkdownParseOption.LatexMatching>) -> String {
-    var result = input
+    let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
+    return applying(inlineReplacements(
+      in: input,
+      rules: rules,
+      codeRanges: codeRanges,
+      blockRanges: nil
+    ), to: input)
+  }
+
+  private func inlineReplacements(
+    in input: String,
+    rules: Set<MarkdownParseOption.LatexMatching>,
+    codeRanges: [NSRange],
+    blockRanges: [NSRange]?
+  ) -> [Replacement] {
+    let blockRanges = blockRanges
+      ?? blockReplacements(in: input, rules: rules, codeRanges: codeRanges).map(\.range)
+    var replacements: [Replacement] = []
     if rules.contains(.inlineSlashBracket) {
-      result = result.replacing(Self.inlineParenthesisMath, with: { match in
-        "`\\(\(match[Self.latexRef])\\)`"
-      })
-    }
-    if rules.contains(.inlineDollar), let inlineDollarMath = Self.inlineDollarMath {
-      let range = NSRange(result.startIndex..<result.endIndex, in: result)
-      for match in inlineDollarMath.matches(in: result, range: range).reversed() {
-        guard let fullRange = Range(match.range, in: result),
-              let latexRange = Range(match.range(at: 1), in: result) else { continue }
-        result.replaceSubrange(fullRange, with: "`\\(\(result[latexRange])\\)`")
+      for match in input.matches(of: Self.inlineParenthesisMath) {
+        let range = NSRange(match.range, in: input)
+        guard !Self.overlaps(range, codeRanges + blockRanges) else { continue }
+        replacements.append(Replacement(
+          range: range,
+          value: "`\\(\(match[Self.latexRef])\\)`"
+        ))
       }
     }
-    return result
+    if rules.contains(.inlineDollar) {
+      let range = NSRange(input.startIndex..<input.endIndex, in: input)
+      for match in Self.inlineDollarMath.matches(in: input, range: range) {
+        guard !Self.overlaps(match.range, codeRanges + blockRanges + replacements.map(\.range)),
+              let latexRange = Range(match.range(at: 1), in: input) else { continue }
+        replacements.append(Replacement(
+          range: match.range,
+          value: "`\\(\(input[latexRange])\\)`"
+        ))
+      }
+    }
+    return replacements
+  }
+
+  private func applying(_ replacements: [Replacement], to input: String) -> String {
+    let result = NSMutableString(string: input)
+    for replacement in replacements.sorted(by: { $0.range.location > $1.range.location }) {
+      result.replaceCharacters(in: replacement.range, with: replacement.value)
+    }
+    return result as String
   }
 
   // MARK: - Convenience overloads (default to every supported rule)
@@ -153,12 +222,17 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
 
   /// Drops only an unfinished trailing formula while a streamed snapshot is
   /// still growing. Complete formulas and their original commands are untouched.
-  static func stableStreamingPrefix(_ input: String) -> String {
+  static func stableStreamingPrefix(
+    _ input: String,
+    codeRanges: [NSRange]? = nil
+  ) -> String {
+    guard !input.isEmpty else { return input }
+    let codeRanges = codeRanges ?? MarkdownCodeRangeScanner.ranges(in: input)
     var cut = input.endIndex
 
     func considerUnclosed(open: String, close: String) {
-      guard let openRange = input.range(of: open, options: .backwards) else { return }
-      let closeRange = input.range(of: close, options: .backwards)
+      guard let openRange = lastUnprotectedRange(of: open, in: input, codeRanges: codeRanges) else { return }
+      let closeRange = lastUnprotectedRange(of: close, in: input, codeRanges: codeRanges)
       if closeRange == nil || openRange.lowerBound > closeRange!.lowerBound {
         cut = min(cut, openRange.lowerBound)
       }
@@ -170,7 +244,9 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     var blockDollarRanges: [Range<String.Index>] = []
     var searchStart = input.startIndex
     while let range = input.range(of: "$$", range: searchStart..<input.endIndex) {
-      blockDollarRanges.append(range)
+      if !Self.overlaps(NSRange(range, in: input), codeRanges) {
+        blockDollarRanges.append(range)
+      }
       searchStart = range.upperBound
     }
     if blockDollarRanges.count.isMultiple(of: 2) == false,
@@ -178,34 +254,27 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
       cut = min(cut, opening.lowerBound)
     }
 
-    let lineStart = input.lastIndex(of: "\n").map(input.index(after:)) ?? input.startIndex
-    var inlineDollarOpen: String.Index?
-    var index = lineStart
-    while index < input.endIndex {
-      let next = input.index(after: index)
-      guard input[index] == "$" else {
-        index = next
-        continue
-      }
-      let previous = index > input.startIndex ? input[input.index(before: index)] : nil
-      let following = next < input.endIndex ? input[next] : nil
-      if previous == "\\" || previous == "$" || following == "$" {
-        index = next
-        continue
-      }
-      if inlineDollarOpen == nil {
-        if let following, !following.isWhitespace {
-          inlineDollarOpen = index
-        }
-      } else if following?.isNumber != true {
-        inlineDollarOpen = nil
-      }
-      index = next
-    }
-    if let inlineDollarOpen {
-      cut = min(cut, inlineDollarOpen)
-    }
-
     return cut < input.endIndex ? String(input[..<cut]) : input
   }
+
+  private static func lastUnprotectedRange(
+    of needle: String,
+    in input: String,
+    codeRanges: [NSRange]
+  ) -> Range<String.Index>? {
+    var result: Range<String.Index>?
+    var cursor = input.startIndex
+    while let range = input.range(of: needle, range: cursor..<input.endIndex) {
+      if !overlaps(NSRange(range, in: input), codeRanges) {
+        result = range
+      }
+      cursor = range.upperBound
+    }
+    return result
+  }
+
+  private static func overlaps(_ range: NSRange, _ protectedRanges: [NSRange]) -> Bool {
+    protectedRanges.contains { NSIntersectionRange(range, $0).length > 0 }
+  }
+
 }

@@ -55,13 +55,7 @@ struct BlockImageView: View {
     case .bundledResource(let fileName, let ext):
       BundledResourceImage(fileName: fileName, ext: ext)
     case .localFile(let url):
-      if let image = MDImage(contentsOfFile: url.path) {
-        Image(mdImage: image)
-          .resizable()
-          .scaledToFit()
-      } else {
-        BlockImageFailureView()
-      }
+      LocalFileImage(url: url)
     case nil:
       BlockImageFailureView()
     }
@@ -82,6 +76,38 @@ struct BlockImageView: View {
       @unknown default:
         BlockImageFailureView()
       }
+    }
+  }
+}
+
+private struct LocalFileImage: View {
+
+  let url: URL
+
+  @State private var image: MDImage?
+  @State private var didLoad = false
+
+  var body: some View {
+    Group {
+      if let image {
+        Image(mdImage: image)
+          .resizable()
+          .scaledToFit()
+      } else if didLoad {
+        BlockImageFailureView()
+      } else {
+        BlockImageLoadingView()
+      }
+    }
+    .task(id: url) {
+      image = nil
+      didLoad = false
+      let loadedImage = await Task.detached(priority: .userInitiated) {
+        MDImage(contentsOfFile: url.path)
+      }.value
+      guard !Task.isCancelled else { return }
+      image = loadedImage
+      didLoad = true
     }
   }
 }
