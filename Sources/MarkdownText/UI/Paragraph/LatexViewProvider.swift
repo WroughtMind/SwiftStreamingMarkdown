@@ -239,9 +239,8 @@ private final class BlockLatexAttachmentView: NSView, FormulaSelectionDisplaying
     scrollView.hasHorizontalScroller = true
     scrollView.hasVerticalScroller = false
     scrollView.autohidesScrollers = true
-    formulaDocumentView.addSubview(label)
     scrollView.documentView = formulaDocumentView
-    addSubview(scrollView)
+    addSubview(label)
   }
 
   required init?(coder: NSCoder) { nil }
@@ -261,18 +260,32 @@ private final class BlockLatexAttachmentView: NSView, FormulaSelectionDisplaying
 
   override func layout() {
     super.layout()
-    scrollView.frame = bounds
-    let contentWidth = max(bounds.width, naturalSize.width.rounded(.up))
-    formulaDocumentView.frame = CGRect(
-      origin: .zero,
-      size: CGSize(width: contentWidth, height: bounds.height)
-    )
-    label.frame = CGRect(
-      x: naturalSize.width < contentWidth ? (contentWidth - naturalSize.width) / 2 : 0,
-      y: 0,
-      width: naturalSize.width.rounded(.up),
-      height: bounds.height
-    )
+    let labelWidth = naturalSize.width.rounded(.up)
+    if naturalSize.width > bounds.width {
+      if scrollView.superview !== self {
+        label.removeFromSuperview()
+        formulaDocumentView.addSubview(label)
+        addSubview(scrollView)
+      }
+      scrollView.frame = bounds
+      formulaDocumentView.frame = CGRect(
+        origin: .zero,
+        size: CGSize(width: labelWidth, height: bounds.height)
+      )
+      label.frame = CGRect(x: 0, y: 0, width: labelWidth, height: bounds.height)
+    } else {
+      if label.superview !== self {
+        scrollView.removeFromSuperview()
+        label.removeFromSuperview()
+        addSubview(label)
+      }
+      label.frame = CGRect(
+        x: (bounds.width - labelWidth) / 2,
+        y: 0,
+        width: labelWidth,
+        height: bounds.height
+      )
+    }
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -288,6 +301,7 @@ private final class BlockLatexAttachmentView: NSView, FormulaSelectionDisplaying
       || (event.modifierFlags.contains(.shift) && event.scrollingDeltaY != 0)
     guard
       isHorizontalScroll,
+      scrollView.superview === self,
       formulaDocumentView.frame.width > scrollView.contentView.bounds.width
     else {
       nextResponder?.scrollWheel(with: event)

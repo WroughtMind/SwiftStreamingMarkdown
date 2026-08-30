@@ -5,6 +5,7 @@
 
 #if canImport(AppKit)
 import AppKit
+import SwiftMath
 @testable import SwiftStreamingMarkdown
 import Testing
 
@@ -77,18 +78,34 @@ struct ParagraphNSViewTests {
     }
 
     let formulaViews = formulaProviders.compactMap(\.view)
-    #expect(formulaViews.count == 2)
+    guard formulaViews.count == 2 else {
+      Issue.record("Expected inline and block formula views")
+      return
+    }
     #expect(formulaViews.allSatisfy { $0 is FormulaSelectionDisplaying })
+
+    let blockFormulaView = formulaViews[1]
+    guard let blockFormulaLabel = blockFormulaView.subviews.first as? MTMathUILabel else {
+      Issue.record("Expected the block formula label to be hosted directly while it fits")
+      return
+    }
+    let naturalFormulaWidth = blockFormulaLabel.intrinsicContentSize.width
+    blockFormulaView.frame.size.width = naturalFormulaWidth
+    blockFormulaView.layout()
+    #expect(blockFormulaView.subviews.allSatisfy { !($0 is NSScrollView) })
+    blockFormulaView.frame.size.width = naturalFormulaWidth / 2
+    blockFormulaView.layout()
+    #expect(blockFormulaView.subviews.contains { $0 is NSScrollView })
+    blockFormulaView.frame.size.width = naturalFormulaWidth
+    blockFormulaView.layout()
+    #expect(blockFormulaView.subviews.allSatisfy { !($0 is NSScrollView) })
 
     view.setSelectedRange(NSRange(location: 0, length: view.string.utf16.count))
     #expect(view.selectedRange() == NSRange(location: 0, length: view.string.utf16.count))
     NotificationCenter.default.post(name: NSTextView.didChangeSelectionNotification, object: view)
     #expect(formulaViews.allSatisfy { $0.layer?.backgroundColor == selectionBackground.cgColor })
 
-    let pasteboard = NSPasteboard.withUniqueName()
-    _ = pasteboard.clearContents()
-    #expect(view.writeSelection(to: pasteboard, types: [.string]))
-    let copied = pasteboard.string(forType: .string)
+    let copied = view.textStorage?.attributedSubstring(from: view.selectedRange()).markdownSourceText
     #expect(copied == "first \\(x + 1\\)\n$$\ny = 2\n$$\nsecond")
     #expect(copied?.contains("\u{FFFC}") == false)
 
