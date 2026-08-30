@@ -7,6 +7,12 @@ import Foundation
 import HighlightSwift
 import SwiftUI
 
+private struct HighlightRequest: Hashable {
+  let code: String
+  let colorScheme: ColorScheme
+  let theme: CodeBlockConfig.Theme
+}
+
 struct CodeBlockView: View {
 
   @Environment(\.markdownConfig) private var config: MarkdownRenderConfig
@@ -128,26 +134,13 @@ struct CodeBlockView: View {
         }
       }
     })
-    .onChange(of: code, perform: { value in
-      Task {
-        await updateAttributedString(code: value, scheme: colorScheme)
-      }
-    })
-    .onChange(of: colorScheme, perform: { newValue in
-      Task {
-        await updateAttributedString(code: code, scheme: newValue)
-      }
-    })
-    .onChange(of: config, perform: { _ in
-      Task {
-        await updateAttributedString(code: code, scheme: colorScheme)
-      }
-    })
-    .onAppear(perform: {
-      Task {
-        await updateAttributedString(code: code, scheme: colorScheme)
-      }
-    })
+    .task(id: HighlightRequest(
+      code: code,
+      colorScheme: colorScheme,
+      theme: config.codeBlockConfig.theme
+    )) {
+      await updateAttributedString(code: code, scheme: colorScheme)
+    }
   }
 }
 

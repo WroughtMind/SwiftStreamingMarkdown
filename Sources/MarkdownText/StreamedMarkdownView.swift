@@ -25,6 +25,7 @@ public protocol StreamedMarkdownSource {
 public struct StreamedMarkdownView: View {
 
   private let config: MarkdownRenderConfig
+  @EquatableIgnoredUnsafeClosure private let onRender: (() -> Void)?
   @StateObject private var controller: StreamedMarkdownController
 
   /// Create a `StreamedMarkdownView`.
@@ -33,14 +34,21 @@ public struct StreamedMarkdownView: View {
   ///     complete Markdown source so far, not an incremental delta.
   ///   - config: Render configuration. Defaults to `.default`.
   ///   - listener: Optional listener that receives render and interaction events.
+  ///   - onRender: Called once after the first non-empty document is ready to render.
   public init(
     source: StreamedMarkdownSource,
     config: MarkdownRenderConfig = .default,
-    listener: MarkdownListener? = nil
+    listener: MarkdownListener? = nil,
+    onRender: (() -> Void)? = nil
   ) {
     self.config = config
+    self.onRender = onRender
     _controller = StateObject(
-      wrappedValue: StreamedMarkdownController(source: source, config: config, listener: listener)
+      wrappedValue: StreamedMarkdownController(
+        source: source,
+        listener: listener,
+        onRender: onRender
+      )
     )
   }
 
@@ -50,8 +58,8 @@ public struct StreamedMarkdownView: View {
       config: config,
       listener: controller.listener
     )
-    .task {
-      await controller.start()
+    .task(id: config) {
+      await controller.start(config: config)
     }
     .onDisappear {
       Task {
@@ -64,40 +72,72 @@ public struct StreamedMarkdownView: View {
 final class StreamedMarkdownController: ObservableObject {
 
   @Published var markdownToRender: RenderableDocument = .empty
-  let config: MarkdownRenderConfig
   let listener: MarkdownListener?
 
   private let source: StreamedMarkdownSource
-  private let parser = MarkdownParserImpl()
+  private let parser: MarkdownParser
+  private let onRender: (() -> Void)?
   private var task: Task<Void, Never>?
+  private var didRender = false
+  @WithLock private var latestText: String? = nil
 
   init(
     source: StreamedMarkdownSource,
-    config: MarkdownRenderConfig,
-    listener: MarkdownListener? = nil
+    listener: MarkdownListener? = nil,
+    onRender: (() -> Void)? = nil,
+    parser: MarkdownParser = MarkdownParserImpl()
   ) {
     self.source = source
-    self.config = config
     self.listener = listener
+    self.onRender = onRender
+    self.parser = parser
   }
 
-  func start() async {
+  func start(config: MarkdownRenderConfig) async {
     task?.cancel()
     task = Task { [weak self] in
       guard let self else { return }
-      for await text in self.source.text {
-        if Task.isCancelled { return }
+
+      let (snapshots, continuation) = AsyncStream<String>.makeStream(
+        bufferingPolicy: .bufferingNewest(1)
+      )
+      if let latestText = self.latestText {
+        continuation.yield(latestText)
+      }
+      let sourceTask = Task {
+        for await text in self.source.text {
+          guard !Task.isCancelled else { break }
+          guard self.latestText != text else { continue }
+          self.latestText = text
+          continuation.yield(text)
+        }
+        continuation.finish()
+      }
+      defer {
+        sourceTask.cancel()
+        continuation.finish()
+      }
+
+      for await text in snapshots {
+        guard !Task.isCancelled else { return }
         let parsed = await self.parser.parse(
           text: text,
           option: .init(
             speculativeRewrite: true,
-            imageSupport: self.config.imageConfig.enabled
+            imageSupport: config.imageConfig.enabled
           )
         )
-        let renderable = await RenderableDocument(document: parsed.document, config: self.config)
-        if Task.isCancelled { return }
+        guard self.latestText == text else { continue }
+        let renderable = await RenderableDocument(document: parsed.document, config: config)
+        guard !Task.isCancelled else { return }
+        guard self.latestText == text else { continue }
         await MainActor.run {
+          guard !Task.isCancelled, self.latestText == text else { return }
           self.markdownToRender = renderable
+          if !renderable.isEmpty, !self.didRender {
+            self.didRender = true
+            self.onRender?()
+          }
         }
       }
     }

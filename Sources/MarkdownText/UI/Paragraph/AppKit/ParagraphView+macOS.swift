@@ -14,10 +14,6 @@ struct ParagraphView: NSViewRepresentable {
   var contents: NSMutableAttributedString
   var lineSpacing: CGFloat?
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
-  }
-
   func makeNSView(context: Context) -> ParagraphNSView {
     let openUrlFunction = openURL.callAsFunction(_:)
     // Do not reuse paragraph views on macOS. Reused NSTextView instances can retain
@@ -55,28 +51,7 @@ struct ParagraphView: NSViewRepresentable {
       return nil
     }
 
-    if contents != context.coordinator.lastContents || lineSpacing != context.coordinator.lastLineSpacing {
-      context.coordinator.sizeCache.removeAll()
-      context.coordinator.lastContents = contents
-      context.coordinator.lastLineSpacing = lineSpacing
-    }
-
-    let cacheKey = (width * 10).rounded() / 10
-
-    if let cachedSize = context.coordinator.sizeCache[cacheKey] {
-      return cachedSize
-    }
-
-    let calculatedSize = nsView.measureSize(fittingWidth: width)
-
-    context.coordinator.sizeCache[cacheKey] = calculatedSize
-    return calculatedSize
-  }
-
-  class Coordinator {
-    var sizeCache: [CGFloat: CGSize] = [:]
-    var lastContents: NSMutableAttributedString?
-    var lastLineSpacing: CGFloat?
+    return nsView.measureSize(fittingWidth: width)
   }
 }
 

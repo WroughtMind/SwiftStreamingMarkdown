@@ -28,7 +28,7 @@ public struct MarkdownView: View {
   ) {
     self.text = text
     self.config = config
-    _controller = StateObject(wrappedValue: MarkdownViewController(config: config, listener: listener))
+    _controller = StateObject(wrappedValue: MarkdownViewController(listener: listener))
   }
 
   public var body: some View {
@@ -39,29 +39,34 @@ public struct MarkdownView: View {
         DocumentView(renderableDocument: .empty, config: config, listener: controller.listener)
       }
     }
-    .task(id: text) {
-      await controller.parse(text: text)
+    .task(id: MarkdownRequest(text: text, config: config)) {
+      await controller.parse(text: text, config: config)
     }
   }
+}
+
+private struct MarkdownRequest: Hashable {
+  let text: String
+  let config: MarkdownRenderConfig
 }
 
 final class MarkdownViewController: ObservableObject {
 
   @Published var renderable: RenderableDocument?
 
-  private let config: MarkdownRenderConfig
   private let parser = MarkdownParserImpl()
 
   let listener: MarkdownListener?
 
-  init(config: MarkdownRenderConfig = .default, listener: MarkdownListener? = nil) {
-    self.config = config
+  init(listener: MarkdownListener? = nil) {
     self.listener = listener
   }
 
-  func parse(text: String) async {
+  func parse(text: String, config: MarkdownRenderConfig) async {
     let renderable = await parser.parse(text: text, config: config)
+    guard !Task.isCancelled else { return }
     await MainActor.run {
+      guard !Task.isCancelled else { return }
       self.renderable = renderable
     }
   }

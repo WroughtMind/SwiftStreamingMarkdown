@@ -35,7 +35,7 @@ class ParagraphNSView: NSTextView {
     let layoutManager = NSLayoutManager()
     textStorage.addLayoutManager(layoutManager)
     let textContainer = NSTextContainer(containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-    textContainer.widthTracksTextView = true
+    textContainer.widthTracksTextView = false
     textContainer.heightTracksTextView = false
     layoutManager.addTextContainer(textContainer)
     self.init(frame: .zero, textContainer: textContainer)
@@ -66,7 +66,7 @@ class ParagraphNSView: NSTextView {
   // MARK: - Intrinsic Content Size
 
   override var intrinsicContentSize: NSSize {
-    if let cachedSize {
+    if let cachedSize, cachedSize.targetWidth == bounds.width {
       return cachedSize.size
     }
     var targetWidth = bounds.width
@@ -81,34 +81,43 @@ class ParagraphNSView: NSTextView {
 
   /// Measures the size required to lay out the current content within `width`.
   ///
-  /// Uses a dedicated, throwaway layout stack instead of the view's own text container.
-  /// The display container has `widthTracksTextView = true`, so its width follows the
-  /// view's frame width regardless of any `containerSize` we set. When the view is
-  /// measured before it has been given a frame (e.g. mid navigation transition) that
-  /// tracked width is `0`, which yields a zero height and collapses the paragraph. A
-  /// standalone container whose width we set directly always measures correctly.
+  /// Reuses the view's layout stack and explicitly sizes its text container so
+  /// measurement also works before SwiftUI gives the view a frame.
   func measureSize(fittingWidth width: CGFloat) -> CGSize {
-    guard let textStorage, textStorage.length > 0, width > 0, width.isFinite else {
+    guard
+      let textStorage,
+      textStorage.length > 0,
+      let textContainer,
+      let layoutManager,
+      width > 0,
+      width.isFinite
+    else {
       return .zero
     }
-    let measuringTextStorage = NSTextStorage(attributedString: textStorage)
-    let measuringLayoutManager = NSLayoutManager()
-    let measuringContainer = NSTextContainer(size: NSSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-    measuringContainer.lineFragmentPadding = 0
-    measuringContainer.maximumNumberOfLines = 0
-    measuringContainer.lineBreakMode = .byWordWrapping
-    measuringLayoutManager.addTextContainer(measuringContainer)
-    measuringTextStorage.addLayoutManager(measuringLayoutManager)
-    measuringLayoutManager.ensureLayout(for: measuringContainer)
-    let usedRect = measuringLayoutManager.usedRect(for: measuringContainer)
-    return CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
+    if let cachedSize, cachedSize.targetWidth == width {
+      return cachedSize.size
+    }
+    textContainer.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+    layoutManager.ensureLayout(for: textContainer)
+    let usedRect = layoutManager.usedRect(for: textContainer)
+    let size = CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
+    cachedSize = CachedParagraphNSViewSize(size: size, targetWidth: width)
+    return size
   }
 
   override func layout() {
     super.layout()
-    if bounds.width != cachedSize?.targetWidth {
-      invalidateCachedSize()
-    }
+    guard
+      let textContainer,
+      bounds.width > 0,
+      bounds.width.isFinite,
+      textContainer.containerSize.width != bounds.width
+    else { return }
+    textContainer.containerSize = NSSize(
+      width: bounds.width,
+      height: CGFloat.greatestFiniteMagnitude
+    )
+    invalidateCachedSize()
     invalidateIntrinsicContentSize()
   }
 
@@ -171,10 +180,20 @@ class ParagraphNSView: NSTextView {
   private func applyLineSpacing(to attributedString: NSMutableAttributedString, lineSpacing: CGFloat?) -> NSMutableAttributedString {
     let result = NSMutableAttributedString(attributedString: attributedString)
     if let lineSpacing {
-      let paragraphStyle = NSMutableParagraphStyle()
-      paragraphStyle.lineSpacing = lineSpacing
-      paragraphStyle.alignment = .left
-      result.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: result.length))
+      var updates: [(NSRange, NSMutableParagraphStyle)] = []
+      result.enumerateAttribute(
+        .paragraphStyle,
+        in: NSRange(location: 0, length: result.length)
+      ) { value, range, _ in
+        let paragraphStyle = (value as? NSParagraphStyle)?.mutableCopy()
+          as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = lineSpacing
+        paragraphStyle.alignment = .left
+        updates.append((range, paragraphStyle))
+      }
+      for (range, paragraphStyle) in updates {
+        result.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+      }
     }
     return result
   }
@@ -190,7 +209,7 @@ class ParagraphNSView: NSTextView {
     isSelectable = true
     drawsBackground = false
     textContainer?.lineFragmentPadding = 0
-    textContainer?.widthTracksTextView = true
+    textContainer?.widthTracksTextView = false
     textContainer?.heightTracksTextView = false
     textContainer?.maximumNumberOfLines = 0
     textContainer?.lineBreakMode = .byWordWrapping
