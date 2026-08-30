@@ -100,7 +100,7 @@ class ParagraphNSView: NSTextView {
     textContainer.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
     layoutManager.ensureLayout(for: textContainer)
     let usedRect = layoutManager.usedRect(for: textContainer)
-    let size = CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
+    let size = CGSize(width: width, height: usedRect.height.rounded(.up))
     cachedSize = CachedParagraphNSViewSize(size: size, targetWidth: width)
     return size
   }
@@ -118,7 +118,6 @@ class ParagraphNSView: NSTextView {
       height: CGFloat.greatestFiniteMagnitude
     )
     invalidateCachedSize()
-    invalidateIntrinsicContentSize()
   }
 
   // MARK: - Content Update

@@ -8,6 +8,15 @@ import AppKit
 @testable import SwiftStreamingMarkdown
 import Testing
 
+private final class InvalidationCountingParagraphNSView: ParagraphNSView {
+  private(set) var intrinsicSizeInvalidationCount = 0
+
+  override func invalidateIntrinsicContentSize() {
+    intrinsicSizeInvalidationCount += 1
+    super.invalidateIntrinsicContentSize()
+  }
+}
+
 @Suite("ParagraphNSView Measurement Tests")
 @MainActor
 struct ParagraphNSViewTests {
@@ -40,6 +49,28 @@ struct ParagraphNSViewTests {
     view.setParagraphContents(NSMutableAttributedString(string: ""), animatedByWord: false)
 
     #expect(view.measureSize(fittingWidth: 400) == .zero)
+  }
+
+  @Test("Repeated measurement and layout at one width stay stable")
+  func repeatedMeasurementAndLayoutStayStable() {
+    let view = InvalidationCountingParagraphNSView()
+    view.setParagraphContents(
+      NSMutableAttributedString(string: String(repeating: "stable layout ", count: 80)),
+      animatedByWord: false
+    )
+
+    let firstMeasurement = view.measureSize(fittingWidth: 320)
+    let secondMeasurement = view.measureSize(fittingWidth: 320)
+
+    #expect(firstMeasurement == secondMeasurement)
+    #expect(firstMeasurement.width == 320)
+
+    view.frame = NSRect(origin: .zero, size: firstMeasurement)
+    let invalidationsBeforeLayout = view.intrinsicSizeInvalidationCount
+    view.layout()
+    view.layout()
+
+    #expect(view.intrinsicSizeInvalidationCount == invalidationsBeforeLayout)
   }
 }
 #endif
