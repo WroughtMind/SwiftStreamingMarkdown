@@ -10,6 +10,8 @@ import Testing
 struct RenderingRequestTests {
   @Test("Latest request, configuration, and structured run win")
   func latestRequestAndConfigWin() async {
+    #expect(MarkdownController(listener: nil).hasRenderListener == false)
+
     let source = ControlledMarkdownSource()
     let parser = ControlledMarkdownParser()
     var renderCount = 0

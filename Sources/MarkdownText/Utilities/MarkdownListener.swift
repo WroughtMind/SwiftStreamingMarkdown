@@ -39,6 +39,10 @@ public final class MarkdownController: ObservableObject {
   /// tapped. `DocumentView` observes this to present the text selection modal.
   @Published var isTextSelectionRequested = false
 
+  var hasRenderListener: Bool {
+    listener != nil
+  }
+
   init(listener: MarkdownListener?) {
     self.listener = listener
   }

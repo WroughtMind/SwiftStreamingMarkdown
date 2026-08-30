@@ -34,18 +34,25 @@ public struct DocumentView: View {
   }
 
   public var body: some View {
-    BlockView(renderables: renderableDocument.renderables)
-    .environment(\.markdownConfig, config)
-    .environment(\.markdownController, controller)
-    .task {
-      await controller.onAppear(markdown: renderableDocument)
-    }
-    .onChange(of: renderableDocument, perform: { md in
-      controller.onChange(markdown: md)
-    })
-    .onDisappear {
-      Task {
-        await controller.onDisappear()
+    Group {
+      if controller.hasRenderListener {
+        documentContent
+          .task {
+            await controller.onAppear(markdown: renderableDocument)
+          }
+          .onChange(of: renderableDocument, perform: { md in
+            controller.onChange(markdown: md)
+          })
+          .onDisappear {
+            Task {
+              await controller.onDisappear()
+            }
+          }
+      } else {
+        // Without a render listener the document is a one-way visual sink.
+        // Installing an empty onChange here still makes SwiftUI police every
+        // streamed snapshot and can trip its same-frame update guard.
+        documentContent
       }
     }
     .sheet(isPresented: $controller.isTextSelectionRequested) {
@@ -59,6 +66,12 @@ public struct DocumentView: View {
         controller.isTextSelectionRequested = false
       }
     }
+  }
+
+  private var documentContent: some View {
+    BlockView(renderables: renderableDocument.renderables)
+      .environment(\.markdownConfig, config)
+      .environment(\.markdownController, controller)
   }
 }
 
