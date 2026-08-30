@@ -109,6 +109,16 @@ private extension NSAttributedString {
     guard let textFonts, let preferredLineHeight = textFonts.preferredLineHeight else {
       return nil
     }
-    return max(preferredLineHeight - textFonts.normal.lineHeight, 0)
+    let lineSpacing = max(preferredLineHeight - textFonts.normal.lineHeight, 0)
+    #if canImport(AppKit)
+    let paragraphStyle = attribute(
+      .paragraphStyle,
+      at: 0,
+      effectiveRange: nil
+    ) as? NSParagraphStyle
+    return paragraphStyle?.lineSpacing == lineSpacing ? nil : lineSpacing
+    #else
+    return lineSpacing
+    #endif
   }
 }

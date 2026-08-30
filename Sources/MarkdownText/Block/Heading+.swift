@@ -40,6 +40,9 @@ extension Heading: BlockConvertible {
     }
     newContainer[.foregroundColor] = MDColor(config.headingStyle.textColor)
     let paragraphContent = buildParagraphContent(container: newContainer, config: config)
+    #if canImport(AppKit)
+    paragraphContent.applyPreferredLineSpacing(from: headingFont)
+    #endif
     return .heading(id: self.id, level: self.level, content: paragraphContent)
   }
 }

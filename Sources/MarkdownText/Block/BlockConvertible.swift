@@ -6,6 +6,9 @@
 import Foundation
 import Markdown
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// A markdown block that can be converted into `MarkdownRenderable`
 
@@ -23,3 +26,26 @@ extension Markup {
     return self.children.compactMap { $0 as? BlockConvertible }
   }
 }
+
+#if canImport(AppKit)
+extension NSMutableAttributedString {
+  func applyPreferredLineSpacing(from fonts: TextFonts) {
+    guard length > 0, let preferredLineHeight = fonts.preferredLineHeight else { return }
+    let lineSpacing = max(preferredLineHeight - fonts.normal.lineHeight, 0)
+    var updates: [(NSRange, NSMutableParagraphStyle)] = []
+    enumerateAttribute(
+      .paragraphStyle,
+      in: NSRange(location: 0, length: length)
+    ) { value, range, _ in
+      let paragraphStyle = (value as? NSParagraphStyle)?.mutableCopy()
+        as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+      paragraphStyle.lineSpacing = lineSpacing
+      paragraphStyle.alignment = .left
+      updates.append((range, paragraphStyle))
+    }
+    for (range, paragraphStyle) in updates {
+      addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+    }
+  }
+}
+#endif

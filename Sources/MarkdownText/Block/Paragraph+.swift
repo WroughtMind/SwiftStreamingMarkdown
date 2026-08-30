@@ -26,6 +26,9 @@ extension Paragraph: BlockConvertible {
     }
     container[.foregroundColor] = MDColor(config.paragraphStyle.textColor)
     let paragraphContent: NSMutableAttributedString = self.buildParagraphContent(container: container, config: config)
+    #if canImport(AppKit)
+    paragraphContent.applyPreferredLineSpacing(from: config.paragraphStyle.textFonts)
+    #endif
     return MarkdownRenderable.paragraph(id: self.id, content: paragraphContent)
   }
 

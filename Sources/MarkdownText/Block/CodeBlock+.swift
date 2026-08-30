@@ -33,9 +33,11 @@ extension CodeBlock: BlockConvertible {
         container[.kern] = kern
       }
       container[.foregroundColor] = textColor
+      let content = NSMutableAttributedString(attachment: attachment).mergingAttributes(container)
+      content.applyPreferredLineSpacing(from: config.paragraphStyle.textFonts)
       return .paragraph(
         id: self.id,
-        content: NSMutableAttributedString(attachment: attachment).mergingAttributes(container)
+        content: content
       )
       #else
       return .latex(id: self.id, content: self.code)

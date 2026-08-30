@@ -119,6 +119,12 @@ struct ParagraphNSViewTests {
       effectiveRange: nil
     ) as? NSParagraphStyle
     #expect(paragraphStyle?.paragraphSpacing == 18)
+    let expectedLineSpacing = max(
+      (config.paragraphStyle.textFonts.preferredLineHeight ?? 0)
+        - config.paragraphStyle.textFonts.normal.lineHeight,
+      0
+    )
+    #expect(paragraphStyle?.lineSpacing == expectedLineSpacing)
   }
 
   /// Regression: a paragraph is often measured before SwiftUI has given the view a frame
