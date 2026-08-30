@@ -115,11 +115,12 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
     label.labelMode = displayMode == .block ? .display : .text
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     #if canImport(AppKit)
+    let naturalSize = label.intrinsicContentSize
     if displayMode == .block {
-      self.view = BlockLatexAttachmentView(label: label)
+      self.view = BlockLatexAttachmentView(label: label, naturalSize: naturalSize)
       return
     }
-    self.view = PassthroughMathView(label: label)
+    self.view = PassthroughMathView(label: label, naturalSize: naturalSize)
     #else
     self.view = label
     #endif
@@ -130,32 +131,27 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
                                  textContainer: NSTextContainer?,
                                  proposedLineFragment: CGRect,
                                  position: CGPoint) -> CGRect {
-    let mathLabel: MTMathUILabel?
+    let measuredSize: CGSize
     #if canImport(AppKit)
     if let blockView = view as? BlockLatexAttachmentView {
-      mathLabel = blockView.label
+      measuredSize = blockView.naturalSize
     } else if let inlineView = view as? PassthroughMathView {
-      mathLabel = inlineView.label
+      measuredSize = inlineView.naturalSize
     } else {
-      mathLabel = view as? MTMathUILabel
-    }
-    #else
-    mathLabel = view as? MTMathUILabel
-    #endif
-    guard let mathLabel else {
       return .zero
     }
-    #if canImport(UIKit)
+    #else
+    guard let mathLabel = view as? MTMathUILabel else {
+      return .zero
+    }
     mathLabel.sizeToFit()
-    let size = mathLabel.bounds.size
-    #elseif canImport(AppKit)
-    let size = mathLabel.intrinsicContentSize
+    measuredSize = mathLabel.bounds.size
     #endif
-    let height = size.height.rounded(.up) + 1.0
+    let height = measuredSize.height.rounded(.up) + 1.0
     if displayMode == .block {
       let availableWidth = proposedLineFragment.width > 0 && proposedLineFragment.width.isFinite
         ? proposedLineFragment.width
-        : size.width.rounded(.up)
+        : measuredSize.width.rounded(.up)
       return CGRect(
         x: 0,
         y: 0,
@@ -165,23 +161,25 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
     }
     let font = attributes[.font] as? MDFont ?? MDFont.systemFont(ofSize: fontSize)
     let yOffset = (font.xHeight - height) / 2.0
-    return CGRect(x: 0, y: yOffset, width: size.width.rounded(.up), height: height)
+    return CGRect(x: 0, y: yOffset, width: measuredSize.width.rounded(.up), height: height)
   }
 }
 
 #if canImport(AppKit)
 private final class PassthroughMathView: NSView {
   let label: MTMathUILabel
+  let naturalSize: CGSize
 
-  init(label: MTMathUILabel) {
+  init(label: MTMathUILabel, naturalSize: CGSize) {
     self.label = label
+    self.naturalSize = naturalSize
     super.init(frame: .zero)
     addSubview(label)
   }
 
   required init?(coder: NSCoder) { nil }
 
-  override var intrinsicContentSize: NSSize { label.intrinsicContentSize }
+  override var intrinsicContentSize: NSSize { naturalSize }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
   override func layout() {
@@ -192,11 +190,13 @@ private final class PassthroughMathView: NSView {
 
 private final class BlockLatexAttachmentView: NSView {
   let label: MTMathUILabel
+  let naturalSize: CGSize
   private let scrollView = NSScrollView()
   private let formulaDocumentView = NSView()
 
-  init(label: MTMathUILabel) {
+  init(label: MTMathUILabel, naturalSize: CGSize) {
     self.label = label
+    self.naturalSize = naturalSize
     super.init(frame: .zero)
     wantsLayer = true
     layer?.backgroundColor = NSColor.clear.cgColor
@@ -219,16 +219,15 @@ private final class BlockLatexAttachmentView: NSView {
   override func layout() {
     super.layout()
     scrollView.frame = bounds
-    let formulaSize = label.intrinsicContentSize
-    let contentWidth = max(bounds.width, formulaSize.width.rounded(.up))
+    let contentWidth = max(bounds.width, naturalSize.width.rounded(.up))
     formulaDocumentView.frame = CGRect(
       origin: .zero,
       size: CGSize(width: contentWidth, height: bounds.height)
     )
     label.frame = CGRect(
-      x: formulaSize.width < contentWidth ? (contentWidth - formulaSize.width) / 2 : 0,
+      x: naturalSize.width < contentWidth ? (contentWidth - naturalSize.width) / 2 : 0,
       y: 0,
-      width: formulaSize.width.rounded(.up),
+      width: naturalSize.width.rounded(.up),
       height: bounds.height
     )
   }

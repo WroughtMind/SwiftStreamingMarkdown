@@ -122,7 +122,6 @@ struct CodeBlockView: View {
             ))
         )
       codeblock
-        .fixedSize(horizontal: false, vertical: true)
         .scrollIndicators(.automatic)
         .if(backgroundColor != nil, content: { view in
           let color = backgroundColor ?? Color.clear

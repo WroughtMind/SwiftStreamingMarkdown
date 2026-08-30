@@ -17,7 +17,7 @@ struct BlockView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: config.blockSpacing) {
+    LazyVStack(alignment: .leading, spacing: config.blockSpacing) {
       ForEach(renderables) { renderable in
         SingleBlockView(renderable: renderable)
       }
@@ -44,7 +44,6 @@ struct SingleBlockView: View {
           .accessibilityAddTraits(.isHeader)
       case .paragraph(_, let contents):
         ParagraphView(contents: contents, lineSpacing: contents.preferredLineSpacing)
-          .fixedSize(horizontal: false, vertical: true)
           .transition(.opacity)
       case .latex(_, let latexString):
         ViewThatFits(in: .horizontal) {
