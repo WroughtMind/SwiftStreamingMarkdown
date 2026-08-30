@@ -61,11 +61,6 @@ public struct StreamedMarkdownView: View {
     .task(id: config) {
       await controller.start(config: config)
     }
-    .onDisappear {
-      Task {
-        await controller.end()
-      }
-    }
   }
 }
 
@@ -74,12 +69,10 @@ final class StreamedMarkdownController: ObservableObject {
   @Published var markdownToRender: RenderableDocument = .empty
   let listener: MarkdownListener?
 
-  private let source: StreamedMarkdownSource
   private let parser: MarkdownParser
   private let onRender: (() -> Void)?
-  private var task: Task<Void, Never>?
+  private let streamCoordinator: StreamCoordinator
   private var didRender = false
-  @WithLock private var latestText: String? = nil
 
   init(
     source: StreamedMarkdownSource,
@@ -87,64 +80,151 @@ final class StreamedMarkdownController: ObservableObject {
     onRender: (() -> Void)? = nil,
     parser: MarkdownParser = MarkdownParserImpl()
   ) {
-    self.source = source
     self.listener = listener
     self.onRender = onRender
     self.parser = parser
+    streamCoordinator = StreamCoordinator(source: source)
   }
 
   func start(config: MarkdownRenderConfig) async {
-    task?.cancel()
-    task = Task { [weak self] in
-      guard let self else { return }
-
-      let (snapshots, continuation) = AsyncStream<String>.makeStream(
-        bufferingPolicy: .bufferingNewest(1)
-      )
-      if let latestText = self.latestText {
-        continuation.yield(latestText)
-      }
-      let sourceTask = Task {
-        for await text in self.source.text {
-          guard !Task.isCancelled else { break }
-          guard self.latestText != text else { continue }
-          self.latestText = text
-          continuation.yield(text)
-        }
-        continuation.finish()
-      }
-      defer {
-        sourceTask.cancel()
-        continuation.finish()
-      }
-
-      for await text in snapshots {
+    let run = await streamCoordinator.beginRun()
+    await withTaskCancellationHandler {
+      for await text in run.snapshots {
         guard !Task.isCancelled else { return }
-        let parsed = await self.parser.parse(
+        let parsed = await parser.parse(
           text: text,
           option: .init(
             speculativeRewrite: true,
             imageSupport: config.imageConfig.enabled
           )
         )
-        guard self.latestText == text else { continue }
+        guard streamCoordinator.isCurrent(run, text: text) else { continue }
         let renderable = await RenderableDocument(document: parsed.document, config: config)
         guard !Task.isCancelled else { return }
-        guard self.latestText == text else { continue }
         await MainActor.run {
-          guard !Task.isCancelled, self.latestText == text else { return }
-          self.markdownToRender = renderable
-          if !renderable.isEmpty, !self.didRender {
-            self.didRender = true
-            self.onRender?()
+          streamCoordinator.withCurrent(run, text: text) {
+            guard !Task.isCancelled else { return }
+            self.markdownToRender = renderable
+            if !renderable.isEmpty, !self.didRender {
+              self.didRender = true
+              self.onRender?()
+            }
           }
         }
       }
+    } onCancel: {
+      run.continuation.finish()
+    }
+    await streamCoordinator.endRun(run)
+  }
+}
+
+private final class StreamRun: @unchecked Sendable {
+  let snapshots: AsyncStream<String>
+  let continuation: AsyncStream<String>.Continuation
+
+  init() {
+    (snapshots, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+  }
+}
+
+private actor StreamCoordinator {
+  private let source: StreamedMarkdownSource
+  private nonisolated let currentState = CurrentStreamState()
+  private var sourceTask: Task<Void, Never>?
+  private var activeRun: StreamRun?
+  private var latestText: String?
+  private var sourceFinished = false
+
+  init(source: StreamedMarkdownSource) {
+    self.source = source
+  }
+
+  deinit {
+    sourceTask?.cancel()
+  }
+
+  func beginRun() -> StreamRun {
+    startSourceIfNeeded()
+    activeRun?.continuation.finish()
+
+    let run = StreamRun()
+    activeRun = run
+    currentState.update(run: run, text: latestText)
+    if let latestText {
+      run.continuation.yield(latestText)
+    }
+    if sourceFinished {
+      run.continuation.finish()
+    }
+    return run
+  }
+
+  nonisolated func isCurrent(_ run: StreamRun, text: String) -> Bool {
+    currentState.isCurrent(run, text: text)
+  }
+
+  nonisolated func withCurrent(
+    _ run: StreamRun,
+    text: String,
+    perform: () -> Void
+  ) {
+    currentState.withCurrent(run, text: text, perform: perform)
+  }
+
+  func endRun(_ run: StreamRun) {
+    guard activeRun === run else { return }
+    run.continuation.finish()
+    activeRun = nil
+    currentState.update(run: nil, text: latestText)
+  }
+
+  private func startSourceIfNeeded() {
+    guard sourceTask == nil else { return }
+    sourceTask = Task { [weak self, source] in
+      for await text in source.text {
+        guard !Task.isCancelled else { break }
+        await self?.receive(text)
+      }
+      await self?.finishSource()
     }
   }
 
-  func end() async {
-    task?.cancel()
-    task = nil
+  private func receive(_ text: String) {
+    guard latestText != text else { return }
+    latestText = text
+    currentState.update(run: activeRun, text: text)
+    activeRun?.continuation.yield(text)
+  }
+
+  private func finishSource() {
+    sourceFinished = true
+    activeRun?.continuation.finish()
+  }
+}
+
+private final class CurrentStreamState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var run: StreamRun?
+  private var text: String?
+
+  func update(run: StreamRun?, text: String?) {
+    lock.lock()
+    self.run = run
+    self.text = text
+    lock.unlock()
+  }
+
+  func isCurrent(_ run: StreamRun, text: String) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return self.run === run && self.text == text
+  }
+
+  func withCurrent(_ run: StreamRun, text: String, perform: () -> Void) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard self.run === run, self.text == text else { return }
+    perform()
   }
 }

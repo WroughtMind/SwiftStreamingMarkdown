@@ -14,6 +14,7 @@ public struct MarkdownView: View {
 
   private let text: String
   private let config: MarkdownRenderConfig
+  @EquatableIgnoredUnsafeClosure private let onRender: (() -> Void)?
   @StateObject var controller: MarkdownViewController
 
   /// Create a `MarkdownView`.
@@ -21,14 +22,19 @@ public struct MarkdownView: View {
   ///   - text: The raw Markdown source to parse and render.
   ///   - config: Render configuration. Defaults to `.default`.
   ///   - listener: Optional listener that receives render and interaction events.
+  ///   - onRender: Called once after the first non-empty document is ready to render.
   public init(
     text: String,
     config: MarkdownRenderConfig = .default,
-    listener: MarkdownListener? = nil
+    listener: MarkdownListener? = nil,
+    onRender: (() -> Void)? = nil
   ) {
     self.text = text
     self.config = config
-    _controller = StateObject(wrappedValue: MarkdownViewController(listener: listener))
+    self.onRender = onRender
+    _controller = StateObject(
+      wrappedValue: MarkdownViewController(listener: listener, onRender: onRender)
+    )
   }
 
   public var body: some View {
@@ -55,11 +61,14 @@ final class MarkdownViewController: ObservableObject {
   @Published var renderable: RenderableDocument?
 
   private let parser = MarkdownParserImpl()
+  private let onRender: (() -> Void)?
+  private var didRender = false
 
   let listener: MarkdownListener?
 
-  init(listener: MarkdownListener? = nil) {
+  init(listener: MarkdownListener? = nil, onRender: (() -> Void)? = nil) {
     self.listener = listener
+    self.onRender = onRender
   }
 
   func parse(text: String, config: MarkdownRenderConfig) async {
@@ -68,6 +77,10 @@ final class MarkdownViewController: ObservableObject {
     await MainActor.run {
       guard !Task.isCancelled else { return }
       self.renderable = renderable
+      if !renderable.isEmpty, !self.didRender {
+        self.didRender = true
+        self.onRender?()
+      }
     }
   }
 }
