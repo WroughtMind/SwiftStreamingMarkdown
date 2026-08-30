@@ -17,7 +17,7 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", exact: "1.19.3"),
     .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.7.3"),
     .package(url: "https://github.com/appstefan/highlightswift", revision: "99c431b38a1444a5fd6a4978307fbbefe3a7af53"),
-    .package(url: "https://github.com/WroughtMind/SwiftMath", revision: "018de5d50b1d2345f4426c00a386cb0fd98d1b53"),
+    .package(url: "https://github.com/WroughtMind/SwiftMath", revision: "62b4ccad3faf21806525cc3788f097858b99628f"),
     .package(url: "https://github.com/markiv/SwiftUI-Shimmer", exact: "1.5.1")
   ],
   targets: [

@@ -90,6 +90,7 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     withholdIncompleteMath: Bool
   ) -> String {
     let rules = Set(matchingRules)
+    guard Self.hasFormulaCandidate(in: input, rules: rules) else { return input }
     let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
     let stableInput = withholdIncompleteMath
       ? Self.stableStreamingPrefix(input, codeRanges: codeRanges)
@@ -108,6 +109,10 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
 
   /// This replace block math with a special code block node. By treating it as a code block it will avoid over escaping characters within latex.
   func processBlockMath(input: String, rules: Set<MarkdownParseOption.LatexMatching>) -> String {
+    guard (rules.contains(.blockDollar) && input.contains("$$"))
+            || (rules.contains(.blockSlashBracket) && input.contains("\\[")) else {
+      return input
+    }
     let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
     return applying(blockReplacements(in: input, rules: rules, codeRanges: codeRanges), to: input)
   }
@@ -137,9 +142,12 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
       }
     }
     if rules.contains(.blockSlashBracket) {
+      let protectedRanges = (codeRanges + replacements.map(\.range)).sorted {
+        $0.location < $1.location
+      }
       for match in input.matches(of: Self.slashBracketMath) {
         let range = NSRange(match.range, in: input)
-        guard !Self.overlaps(range, codeRanges + replacements.map(\.range)) else { continue }
+        guard !Self.overlaps(range, protectedRanges) else { continue }
         replacements.append(Replacement(
           range: range,
           value: Self.buildCodeBlock(
@@ -154,6 +162,10 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
 
   /// This wraps inline math as inline code to avoid over-unescaping issue
   func processInlineMath(input: String, rules: Set<MarkdownParseOption.LatexMatching>) -> String {
+    guard (rules.contains(.inlineDollar) && Self.hasInlineDollarCandidate(in: input))
+            || (rules.contains(.inlineSlashBracket) && input.contains("\\(")) else {
+      return input
+    }
     let codeRanges = MarkdownCodeRangeScanner.ranges(in: input)
     return applying(inlineReplacements(
       in: input,
@@ -172,10 +184,11 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     let blockRanges = blockRanges
       ?? blockReplacements(in: input, rules: rules, codeRanges: codeRanges).map(\.range)
     var replacements: [Replacement] = []
+    let blockProtectedRanges = (codeRanges + blockRanges).sorted { $0.location < $1.location }
     if rules.contains(.inlineSlashBracket) {
       for match in input.matches(of: Self.inlineParenthesisMath) {
         let range = NSRange(match.range, in: input)
-        guard !Self.overlaps(range, codeRanges + blockRanges) else { continue }
+        guard !Self.overlaps(range, blockProtectedRanges) else { continue }
         replacements.append(Replacement(
           range: range,
           value: "`\\(\(match[Self.latexRef])\\)`"
@@ -184,8 +197,11 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
     }
     if rules.contains(.inlineDollar) {
       let range = NSRange(input.startIndex..<input.endIndex, in: input)
+      let protectedRanges = (blockProtectedRanges + replacements.map(\.range)).sorted {
+        $0.location < $1.location
+      }
       for match in Self.inlineDollarMath.matches(in: input, range: range) {
-        guard !Self.overlaps(match.range, codeRanges + blockRanges + replacements.map(\.range)),
+        guard !Self.overlaps(match.range, protectedRanges),
               let latexRange = Range(match.range(at: 1), in: input) else { continue }
         replacements.append(Replacement(
           range: match.range,
@@ -274,7 +290,35 @@ final class LaTexPreProcessorImpl: LaTexPreProcessor {
   }
 
   private static func overlaps(_ range: NSRange, _ protectedRanges: [NSRange]) -> Bool {
-    protectedRanges.contains { NSIntersectionRange(range, $0).length > 0 }
+    var lower = 0
+    var upper = protectedRanges.count
+    while lower < upper {
+      let middle = lower + (upper - lower) / 2
+      if NSMaxRange(protectedRanges[middle]) <= range.location {
+        lower = middle + 1
+      } else {
+        upper = middle
+      }
+    }
+    guard lower < protectedRanges.count else { return false }
+    return protectedRanges[lower].location < NSMaxRange(range)
+  }
+
+  private static func hasFormulaCandidate(
+    in input: String,
+    rules: Set<MarkdownParseOption.LatexMatching>
+  ) -> Bool {
+    (rules.contains(.blockDollar) && input.contains("$$"))
+      || (rules.contains(.inlineDollar) && hasInlineDollarCandidate(in: input))
+      || (rules.contains(.inlineSlashBracket) && input.contains("\\("))
+      || (rules.contains(.blockSlashBracket) && input.contains("\\["))
+  }
+
+  private static func hasInlineDollarCandidate(in input: String) -> Bool {
+    inlineDollarMath.firstMatch(
+      in: input,
+      range: NSRange(input.startIndex..<input.endIndex, in: input)
+    ) != nil
   }
 
 }
