@@ -84,7 +84,7 @@ extension MarkdownRenderable {
   var plainText: String? {
     switch self {
     case .paragraph(_, let content), .heading(_, _, let content):
-      return content.string
+      return content.markdownSourceText
     case .latex(_, let content):
       return content
     case .orderedList(_, let items):

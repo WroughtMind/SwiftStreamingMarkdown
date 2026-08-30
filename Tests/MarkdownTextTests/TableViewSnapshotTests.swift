@@ -44,7 +44,13 @@ final class TableViewSnapshotTests: SnapshotTestCase {
     let lightHex = textColor.resolvedForAppearance(.aqua).toHexString()
     let darkHex = textColor.resolvedForAppearance(.darkAqua).toHexString()
     #endif
-    let attachmentData = LatexAttachmentData(latex: latex, fontSize: fontSize, lightTextColor: lightHex, darkTextColor: darkHex)
+    let attachmentData = LatexAttachmentData(
+      latex: latex,
+      fontSize: fontSize,
+      lightTextColor: lightHex,
+      darkTextColor: darkHex,
+      displayMode: .inline
+    )
     let encoder = JSONEncoder()
     guard let payload = try? encoder.encode(attachmentData) else {
       XCTFail("Failed to encode LaTeX attachment data")

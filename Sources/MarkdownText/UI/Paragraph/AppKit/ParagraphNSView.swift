@@ -21,6 +21,7 @@ class ParagraphNSView: NSTextView {
 
   private(set) var paragraphContents: NSMutableAttributedString = NSMutableAttributedString()
   private(set) var lineSpacing: CGFloat?
+  private var renderedContents: NSAttributedString = NSAttributedString()
   private var activeAnimations: [FadeAnimationData] = []
   private var fadeAnimationDisplayLink: CADisplayLink?
   private var cachedSize: CachedParagraphNSViewSize?
@@ -141,7 +142,8 @@ class ParagraphNSView: NSTextView {
 
     tearDownDisplayLink()
     invalidateCachedSize()
-    textStorage?.setAttributedString(finalString)
+    updateTextStorage(with: finalString)
+    renderedContents = NSAttributedString(attributedString: finalString)
 
     configureAccessibility(for: finalString)
 
@@ -172,6 +174,85 @@ class ParagraphNSView: NSTextView {
     } else {
       activeAnimations.removeAll()
     }
+  }
+
+  private func updateTextStorage(with finalString: NSAttributedString) {
+    guard let textStorage else { return }
+    let oldLength = textStorage.length
+    guard
+      activeAnimations.isEmpty,
+      renderedContents.length == oldLength,
+      finalString.length >= oldLength
+    else {
+      textStorage.setAttributedString(finalString)
+      return
+    }
+
+    guard renderedPrefixMatches(finalString, length: oldLength) else {
+      textStorage.setAttributedString(finalString)
+      return
+    }
+
+    let appendedRange = NSRange(
+      location: oldLength,
+      length: finalString.length - oldLength
+    )
+    guard appendedRange.length > 0 else { return }
+    textStorage.append(finalString.attributedSubstring(from: appendedRange))
+  }
+
+  func renderedPrefixMatches(_ candidate: NSAttributedString, length: Int) -> Bool {
+    let storedString = renderedContents.string as NSString
+    let candidateString = candidate.string as NSString
+    guard storedString.isEqual(to: candidateString.substring(to: length)) else {
+      return false
+    }
+
+    var location = 0
+    while location < length {
+      var storedRange = NSRange()
+      var candidateRange = NSRange()
+      let storedAttributes = renderedContents.attributes(at: location, effectiveRange: &storedRange)
+      let candidateAttributes = candidate.attributes(at: location, effectiveRange: &candidateRange)
+      guard renderedAttributesMatch(storedAttributes, candidateAttributes) else { return false }
+      location = min(NSMaxRange(storedRange), NSMaxRange(candidateRange), length)
+    }
+    return true
+  }
+
+  private func renderedAttributesMatch(
+    _ stored: [NSAttributedString.Key: Any],
+    _ candidate: [NSAttributedString.Key: Any]
+  ) -> Bool {
+    guard Set(stored.keys) == Set(candidate.keys) else { return false }
+    for key in stored.keys {
+      guard let storedValue = stored[key], let candidateValue = candidate[key] else { return false }
+      if let storedColor = storedValue as? NSColor,
+         let candidateColor = candidateValue as? NSColor {
+        guard renderedColorsMatch(storedColor, candidateColor) else { return false }
+      } else if let storedAttachment = storedValue as? NSTextAttachment,
+                let candidateAttachment = candidateValue as? NSTextAttachment {
+        guard
+          let storedFormula = LatexAttachmentData.decode(from: storedAttachment),
+          let candidateFormula = LatexAttachmentData.decode(from: candidateAttachment),
+          storedFormula == candidateFormula
+        else {
+          guard (storedAttachment as NSObject).isEqual(candidateAttachment) else { return false }
+          continue
+        }
+      } else if let storedObject = storedValue as? NSObject,
+                let candidateObject = candidateValue as? NSObject {
+        guard storedObject.isEqual(candidateObject) else { return false }
+      } else {
+        return false
+      }
+    }
+    return true
+  }
+
+  private func renderedColorsMatch(_ stored: NSColor, _ candidate: NSColor) -> Bool {
+    stored.resolvedForAppearance(.aqua).isEqual(candidate.resolvedForAppearance(.aqua))
+      && stored.resolvedForAppearance(.darkAqua).isEqual(candidate.resolvedForAppearance(.darkAqua))
   }
 
   // MARK: - Line Spacing
@@ -236,6 +317,10 @@ class ParagraphNSView: NSTextView {
          let citationData = attachment.citationData {
         labelComponents.append(citationData.accessibilityLabel)
         hasAttachments = true
+      } else if let attachment = attrs[.attachment] as? NSTextAttachment,
+                let formula = LatexAttachmentData.decode(from: attachment) {
+        labelComponents.append(formula.sourceText)
+        hasAttachments = true
       } else {
         let text = attributedString.attributedSubstring(from: range).string
         if !text.isEmpty {
@@ -253,7 +338,7 @@ class ParagraphNSView: NSTextView {
     if let content = generateAccessibilityContent(from: attributedString) {
       setAccessibilityLabel(content.label)
     } else {
-      setAccessibilityLabel(attributedString.string)
+      setAccessibilityLabel(attributedString.markdownSourceText)
     }
   }
 
@@ -349,6 +434,23 @@ class ParagraphNSView: NSTextView {
 
   // MARK: - Context Menu
 
+  override func writeSelection(
+    to pboard: NSPasteboard,
+    type: NSPasteboard.PasteboardType
+  ) -> Bool {
+    guard type == .string, let textStorage else {
+      return super.writeSelection(to: pboard, type: type)
+    }
+    let range = NSIntersectionRange(
+      selectedRange(),
+      NSRange(location: 0, length: textStorage.length)
+    )
+    return pboard.setString(
+      textStorage.attributedSubstring(from: range).markdownSourceText,
+      forType: .string
+    )
+  }
+
   override func menu(for event: NSEvent) -> NSMenu? {
     guard let textContextMenu, let textStorage else {
       return super.menu(for: event)
@@ -356,7 +458,7 @@ class ParagraphNSView: NSTextView {
 
     let selectedRange = self.selectedRange()
     let clampedRange = NSIntersectionRange(selectedRange, NSRange(location: 0, length: textStorage.length))
-    let selectedText = textStorage.attributedSubstring(from: clampedRange).string
+    let selectedText = textStorage.attributedSubstring(from: clampedRange).markdownSourceText
 
     // Start from the native context menu so system items (Copy, Look Up,
     // Translate, Share, Services, …) are preserved, then inject the configured

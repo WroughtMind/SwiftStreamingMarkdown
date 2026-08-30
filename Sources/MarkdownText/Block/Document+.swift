@@ -26,11 +26,26 @@ private extension Array where Element == MarkdownRenderable {
   func mergingAdjacentParagraphs(config: MarkdownRenderConfig) -> [MarkdownRenderable] {
     var result: [MarkdownRenderable] = []
     for renderable in self {
-      guard
-        case .paragraph(_, let next) = renderable,
-        case .paragraph(let id, let current) = result.last
-      else {
+      guard case .paragraph(let nextID, let next) = renderable else {
         result.append(renderable)
+        continue
+      }
+
+      let spacedNext = NSMutableAttributedString(attributedString: next)
+      if spacedNext.length > 0 {
+        let location = spacedNext.length - 1
+        let paragraphStyle = (
+          spacedNext.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
+        )?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+        paragraphStyle.paragraphSpacing = config.blockSpacing
+        let paragraphRange = (spacedNext.string as NSString).paragraphRange(
+          for: NSRange(location: location, length: 0)
+        )
+        spacedNext.addAttribute(.paragraphStyle, value: paragraphStyle, range: paragraphRange)
+      }
+
+      guard case .paragraph(let id, let current) = result.last else {
+        result.append(.paragraph(id: nextID, content: spacedNext))
         continue
       }
 
@@ -40,11 +55,6 @@ private extension Array where Element == MarkdownRenderable {
         let paragraphStyle = (
           merged.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
         )?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        paragraphStyle.paragraphSpacing = config.blockSpacing
-        let paragraphRange = (merged.string as NSString).paragraphRange(
-          for: NSRange(location: location, length: 0)
-        )
-        merged.addAttribute(.paragraphStyle, value: paragraphStyle, range: paragraphRange)
         let inheritedAttributes = merged.attributes(at: location, effectiveRange: nil)
         var lineBreakAttributes: [NSAttributedString.Key: Any] = [
           .font: config.paragraphStyle.textFonts.normal,
@@ -65,7 +75,7 @@ private extension Array where Element == MarkdownRenderable {
         }
         merged.append(NSAttributedString(string: "\n", attributes: lineBreakAttributes))
       }
-      merged.append(next)
+      merged.append(spacedNext)
       result[result.count - 1] = .paragraph(id: id, content: merged)
     }
     return result

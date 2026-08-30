@@ -169,13 +169,13 @@ extension Markdown.InlineCode: InlineConvertible {
         latex: codeContent,
         fontSize: font.pointSize,
         lightTextColor: lightHex,
-        darkTextColor: darkHex
+        darkTextColor: darkHex,
+        displayMode: .inline
       )
       let encoder = JSONEncoder()
-      if let payload = try? encoder.encode(attachmentData) {
-        let attachment = NSTextAttachment(data: payload, ofType: UTType.data.identifier)
-        return NSMutableAttributedString(attachment: attachment)
-      }
+      let payload = try! encoder.encode(attachmentData)
+      let attachment = NSTextAttachment(data: payload, ofType: UTType.data.identifier)
+      return NSMutableAttributedString(attachment: attachment)
     }
     var container = attributeContainer
     container[.font] = config.inlineStyle.codeTextFont
