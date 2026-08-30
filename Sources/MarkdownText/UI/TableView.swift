@@ -250,6 +250,8 @@ struct TableLayout: Layout {
     let naturalColumnWidths: [CGFloat]
     var columnWidths: [CGFloat]
     var rowHeights: [CGFloat]
+    var measuredProposalWidth: CGFloat? = nil
+    var measuredFittingAvailableWidth: Bool? = nil
   }
 
   let columnCount: Int
@@ -283,16 +285,24 @@ struct TableLayout: Layout {
     )
   }
 
+  func updateCache(_ cache: inout CacheData, subviews: Subviews) {
+    cache = makeCache(subviews: subviews)
+  }
+
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) -> CGSize {
-    if fittingAvailableWidth, let availableWidth = proposal.width {
-      cache.columnWidths = fittedColumnWidths(
-        cache.naturalColumnWidths,
-        availableWidth: availableWidth
-      )
+    if cache.measuredProposalWidth != proposal.width
+        || cache.measuredFittingAvailableWidth != fittingAvailableWidth {
+      if fittingAvailableWidth, let availableWidth = proposal.width {
+        cache.columnWidths = fittedColumnWidths(
+          cache.naturalColumnWidths,
+          availableWidth: availableWidth
+        )
+      } else {
+        cache.columnWidths = cache.naturalColumnWidths
+      }
       cache.rowHeights = rowHeights(subviews: subviews, columnWidths: cache.columnWidths)
-    } else {
-      cache.columnWidths = cache.naturalColumnWidths
-      cache.rowHeights = rowHeights(subviews: subviews, columnWidths: cache.columnWidths)
+      cache.measuredProposalWidth = proposal.width
+      cache.measuredFittingAvailableWidth = fittingAvailableWidth
     }
     let totalWidth = cache.columnWidths.reduce(0, +)
     let totalHeight = cache.rowHeights.reduce(0, +)
