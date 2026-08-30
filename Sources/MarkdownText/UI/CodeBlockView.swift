@@ -7,7 +7,7 @@ import Foundation
 import HighlightSwift
 import SwiftUI
 
-private struct HighlightRequest: Hashable {
+struct HighlightRequest: Hashable {
   let code: String
   let colorScheme: ColorScheme
   let theme: CodeBlockConfig.Theme
@@ -23,7 +23,7 @@ struct CodeBlockView: View {
   let onCodeCopied: (() -> Void)?
 
   @State var copied: Bool = false
-  @State var attributedString: AttributedString?
+  @StateObject private var highlightResult = HighlightResultStore()
   @StateObject private var taskManager: HighlightTaskManager = HighlightTaskManager()
 
   init(language: String, code: String, onCodeCopied: (() -> Void)? = nil) {
@@ -32,10 +32,11 @@ struct CodeBlockView: View {
     self.onCodeCopied = onCodeCopied
   }
 
-  private func updateAttributedString(code: String, scheme: ColorScheme) async {
-    let colors = config.codeBlockConfig.theme.highlightColors(for: scheme)
-    await taskManager.enqueueCode(code, colors: colors) { newAttributedString in
-      self.attributedString = newAttributedString
+  private func updateAttributedString(request: HighlightRequest) async {
+    highlightResult.begin(request)
+    let colors = request.theme.highlightColors(for: request.colorScheme)
+    await taskManager.enqueueCode(request, colors: colors) { request, newAttributedString in
+      self.highlightResult.publish(newAttributedString, for: request)
     }
   }
 
@@ -47,12 +48,20 @@ struct CodeBlockView: View {
     config.codeBlockConfig.foregroundColor ?? Color.Static.Stone.Stone350
   }
 
+  private var highlightRequest: HighlightRequest {
+    HighlightRequest(
+      code: code,
+      colorScheme: colorScheme,
+      theme: config.codeBlockConfig.theme
+    )
+  }
+
   @ViewBuilder
   var codeblock: some View {
     ScrollView(.horizontal) {
       HStack(alignment: .top) {
         if #available(iOS 16.1, *) {  // Minimum version for HighlightSwift
-          Text(attributedString ?? AttributedString(code))
+          Text(highlightResult.attributedString(for: highlightRequest) ?? AttributedString(code))
             .font(config.codeBlockConfig.codeTextFonts)
             .transition(.opacity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -106,10 +115,10 @@ struct CodeBlockView: View {
         .background(
           backgroundColor
             .clipShape(.rect(
-              topLeadingRadius: 20,
+              topLeadingRadius: 8,
               bottomLeadingRadius: 0,
               bottomTrailingRadius: 0,
-              topTrailingRadius: 20
+              topTrailingRadius: 8
             ))
         )
       codeblock
@@ -120,8 +129,8 @@ struct CodeBlockView: View {
           return view.background(color
             .clipShape(.rect(
               topLeadingRadius: 0,
-              bottomLeadingRadius: 20,
-              bottomTrailingRadius: 20,
+              bottomLeadingRadius: 8,
+              bottomTrailingRadius: 8,
               topTrailingRadius: 0
             ))
           )
@@ -134,13 +143,34 @@ struct CodeBlockView: View {
         }
       }
     })
-    .task(id: HighlightRequest(
-      code: code,
-      colorScheme: colorScheme,
-      theme: config.codeBlockConfig.theme
-    )) {
-      await updateAttributedString(code: code, scheme: colorScheme)
+    .task(id: highlightRequest) {
+      await updateAttributedString(request: highlightRequest)
     }
+  }
+}
+
+@MainActor
+final class HighlightResultStore: ObservableObject {
+  @Published private(set) var attributedString: AttributedString?
+  private var currentRequest: HighlightRequest?
+  private var attributedStringRequest: HighlightRequest?
+
+  func attributedString(for request: HighlightRequest) -> AttributedString? {
+    guard attributedStringRequest == request else { return nil }
+    return attributedString
+  }
+
+  func begin(_ request: HighlightRequest) {
+    guard currentRequest != request else { return }
+    currentRequest = request
+    attributedStringRequest = nil
+    attributedString = nil
+  }
+
+  func publish(_ value: AttributedString, for request: HighlightRequest) {
+    guard currentRequest == request else { return }
+    attributedStringRequest = request
+    attributedString = value
   }
 }
 

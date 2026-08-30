@@ -34,7 +34,7 @@ public struct StreamedMarkdownView: View {
   ///     complete Markdown source so far, not an incremental delta.
   ///   - config: Render configuration. Defaults to `.default`.
   ///   - listener: Optional listener that receives render and interaction events.
-  ///   - onRender: Called once after the first non-empty document is ready to render.
+  ///   - onRender: Called once when the first non-empty document surface appears.
   public init(
     source: StreamedMarkdownSource,
     config: MarkdownRenderConfig = .default,
@@ -53,11 +53,24 @@ public struct StreamedMarkdownView: View {
   }
 
   public var body: some View {
-    DocumentView(
-      renderableDocument: controller.markdownToRender,
-      config: config,
-      listener: controller.listener
-    )
+    Group {
+      if controller.markdownToRender.isEmpty {
+        DocumentView(
+          renderableDocument: .empty,
+          config: config,
+          listener: controller.listener
+        )
+      } else {
+        DocumentView(
+          renderableDocument: controller.markdownToRender,
+          config: config,
+          listener: controller.listener
+        )
+        .onAppear {
+          controller.reportRendered()
+        }
+      }
+    }
     .task(id: config) {
       await controller.start(config: config)
     }
@@ -105,10 +118,6 @@ final class StreamedMarkdownController: ObservableObject {
           streamCoordinator.withCurrent(run, text: text) {
             guard !Task.isCancelled else { return }
             self.markdownToRender = renderable
-            if !renderable.isEmpty, !self.didRender {
-              self.didRender = true
-              self.onRender?()
-            }
           }
         }
       }
@@ -116,6 +125,13 @@ final class StreamedMarkdownController: ObservableObject {
       run.continuation.finish()
     }
     await streamCoordinator.endRun(run)
+  }
+
+  @MainActor
+  func reportRendered() {
+    guard !didRender else { return }
+    didRender = true
+    onRender?()
   }
 }
 

@@ -345,6 +345,8 @@ final class LaTexPreProcessorTests: XCTestCase {
     ] {
       XCTAssertTrue(processed.contains(command), "preprocessor changed \(command)")
     }
+    XCTAssertTrue(processed.contains(#"\tfrac{c}{d}"#))
+    XCTAssertTrue(processed.contains(#"\dfrac{e}{f}"#))
 
     for formula in formulas {
       var error: NSError?
@@ -352,6 +354,26 @@ final class LaTexPreProcessorTests: XCTestCase {
       XCTAssertNil(error, formula)
       XCTAssertFalse(list?.atoms.isEmpty ?? true, formula)
     }
+
+    func formulaHeight(_ latex: String, mode: MTMathUILabelMode) -> CGFloat {
+      let label = MTMathUILabel()
+      label.font = MathFont.latinModernFont.mtfont(size: 16)
+      label.labelMode = mode
+      label.latex = latex
+      return label.intrinsicContentSize.height
+    }
+    let displayTfrac = formulaHeight(#"\tfrac{a}{b}"#, mode: .display)
+    let displayFrac = formulaHeight(#"\frac{a}{b}"#, mode: .display)
+    let displayDfrac = formulaHeight(#"\dfrac{a}{b}"#, mode: .display)
+    XCTAssertLessThan(displayTfrac, displayFrac)
+    XCTAssertEqual(displayFrac, displayDfrac, accuracy: 0.001)
+
+    let textTfrac = formulaHeight(#"\tfrac{a}{b}"#, mode: .text)
+    let textFrac = formulaHeight(#"\frac{a}{b}"#, mode: .text)
+    let textDfrac = formulaHeight(#"\dfrac{a}{b}"#, mode: .text)
+    XCTAssertGreaterThan(textDfrac, textFrac)
+    XCTAssertEqual(textFrac, textTfrac, accuracy: 0.001)
+    XCTAssertGreaterThan(formulaHeight("x + y", mode: .display), 0)
 
     let fallback = try XCTUnwrap(CTFontCreateUIFontForLanguage(.system, 16, nil))
     let mathFont = MathFont.latinModernFont.mtfont(size: 16)

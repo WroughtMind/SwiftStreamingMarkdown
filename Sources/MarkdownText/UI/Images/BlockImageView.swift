@@ -18,11 +18,15 @@ struct BlockImageView: View {
 
   @Environment(\.markdownController) private var controller
   @Environment(\.markdownConfig) private var config
+  @Environment(\.colorScheme) private var colorScheme
 
   @State private var isViewerPresented = false
 
   var body: some View {
     imageContent
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+      .shadow(color: imageShadowColor, radius: 4, x: 0, y: 1)
+      .padding(.vertical, config.paragraphStyle.textFonts.normal.pointSize * 1.1)
       .frame(maxWidth: .infinity, alignment: .center)
       .accessibilityLabel(data.alt.isEmpty ? Text(String.imageLabel) : Text(data.alt))
       .contentShape(Rectangle())
@@ -30,6 +34,13 @@ struct BlockImageView: View {
         handleTap()
       }
       .imageViewer(source: data.source, alt: data.alt, isPresented: $isViewerPresented)
+  }
+
+  private var imageShadowColor: Color {
+    if colorScheme == .dark {
+      return .black.opacity(0.38)
+    }
+    return Color(red: 60 / 255, green: 45 / 255, blue: 30 / 255).opacity(0.14)
   }
 
   private func handleTap() {

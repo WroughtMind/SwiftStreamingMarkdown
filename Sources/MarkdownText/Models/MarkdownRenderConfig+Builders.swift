@@ -16,13 +16,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -35,13 +37,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -54,13 +58,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -73,13 +79,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: value,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -92,13 +100,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: value,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -111,13 +121,36 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: value,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
+    )
+  }
+
+  /// Returns a copy with `layoutStyle` replaced.
+  public func withLayoutStyle(value: MarkdownLayoutStyle) -> MarkdownRenderConfig {
+    MarkdownRenderConfig(
+      shouldAnimateText: shouldAnimateText,
+      blockQuoteStyle: blockQuoteStyle,
+      headingStyle: headingStyle,
+      orderedListStyle: orderedListStyle,
+      paragraphStyle: paragraphStyle,
+      tableStyle: tableStyle,
+      layoutStyle: value,
+      inlineStyle: inlineStyle,
+      textContextMenu: textContextMenu,
+      citationConfig: citationConfig,
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -130,13 +163,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: value,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -150,13 +185,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: value,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -169,13 +206,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: value,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -188,13 +227,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: value,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -208,13 +249,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: value,
-      thematicBreakColor: thematicBreakColor
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -227,13 +270,15 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
       codeBlockConfig: codeBlockConfig,
       blockSpacing: blockSpacing,
       textSelectionConfig: textSelectionConfig,
-      thematicBreakColor: value
+      thematicBreakColor: value,
+      imageConfig: imageConfig
     )
   }
 
@@ -246,6 +291,7 @@ extension MarkdownRenderConfig {
       orderedListStyle: orderedListStyle,
       paragraphStyle: paragraphStyle,
       tableStyle: tableStyle,
+      layoutStyle: layoutStyle,
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,

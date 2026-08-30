@@ -11,12 +11,20 @@ import SwiftUI
 struct TextSelectionView: View {
   let text: String
   let backgroundColor: Color
+  let textStyle: MarkdownRenderConfig.MarkdownTextStyle
+  let selectionColor: Color
+  let selectedTextColor: Color?
   let onDismiss: () -> Void
 
   var body: some View {
     VStack(spacing: 14) {
       TextSelectionHeader(title: String.selectMoreTextLabel, onDismiss: onDismiss)
-      SelectableTextView(text: text)
+      SelectableTextView(
+        text: text,
+        textStyle: textStyle,
+        selectionColor: selectionColor,
+        selectedTextColor: selectedTextColor
+      )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 18)
     }
@@ -66,6 +74,9 @@ private struct TextSelectionHeader: View {
   TextSelectionView(
     text: "The quick brown fox jumps over the lazy dog.\n\nSecond paragraph for selection.",
     backgroundColor: Color.Theme.Background.Page.Chat.Flat,
+    textStyle: MarkdownRenderConfig.defaultParagraphStyle,
+    selectionColor: Color.Theme.Accent.Accent600,
+    selectedTextColor: nil,
     onDismiss: {}
   )
 }

@@ -83,6 +83,9 @@ struct RenderingRequestTests {
     source.yield("after restart")
 
     #expect(await continuedRender.value.plainText == "after restart")
+    #expect(renderCount == 0)
+    controller.reportRendered()
+    controller.reportRendered()
     #expect(renderCount == 1)
     newRun.cancel()
     await newRun.value
@@ -92,7 +95,62 @@ struct RenderingRequestTests {
     await staticController.parse(text: "", config: config)
     await staticController.parse(text: "ready", config: config)
     await staticController.parse(text: "ready again", config: updatedConfig)
+    #expect(staticRenderCount == 0)
+    staticController.reportRendered()
+    staticController.reportRendered()
     #expect(staticRenderCount == 1)
+
+    let oldHighlight = HighlightRequest(code: "old", colorScheme: .light, theme: .standard)
+    let newHighlight = HighlightRequest(code: "new", colorScheme: .dark, theme: .xcode)
+    let highlightResult = HighlightResultStore()
+    highlightResult.begin(oldHighlight)
+    highlightResult.publish(AttributedString("old highlighted"), for: oldHighlight)
+    #expect(highlightResult.attributedString(for: oldHighlight) == AttributedString("old highlighted"))
+    #expect(highlightResult.attributedString(for: newHighlight) == nil)
+    highlightResult.begin(newHighlight)
+    #expect(highlightResult.attributedString(for: newHighlight) == nil)
+    highlightResult.publish(AttributedString("late old"), for: oldHighlight)
+    #expect(highlightResult.attributedString(for: newHighlight) == nil)
+    highlightResult.publish(AttributedString("new highlighted"), for: newHighlight)
+    #expect(highlightResult.attributedString(for: newHighlight) == AttributedString("new highlighted"))
+
+    let selectionAttributes = markdownSelectedTextAttributes(
+      selectionColor: .red,
+      selectedTextColor: .white
+    )
+    #expect(selectionAttributes[.backgroundColor] != nil)
+    #expect(selectionAttributes[.foregroundColor] != nil)
+
+    await staticController.parse(
+      text: "link [end](https://example.com)\n\nmath \\(x\\)\n\nlast",
+      config: updatedConfig
+    )
+    let mergedText = try? #require(staticController.renderable?.attributedStrings.first)
+    #expect(mergedText != nil)
+    if let mergedText {
+      let string = mergedText.string as NSString
+      var linkCount = 0
+      var attachmentCount = 0
+      mergedText.enumerateAttributes(
+        in: NSRange(location: 0, length: mergedText.length)
+      ) { attributes, _, _ in
+        if attributes[.link] != nil { linkCount += 1 }
+        if attributes[.attachment] != nil { attachmentCount += 1 }
+      }
+      #expect(linkCount > 0)
+      #expect(attachmentCount > 0)
+      var location = 0
+      while location < string.length {
+        let range = string.range(of: "\n", range: NSRange(location: location, length: string.length - location))
+        guard range.location != NSNotFound else { break }
+        #expect(mergedText.attribute(.link, at: range.location, effectiveRange: nil) == nil)
+        #expect(mergedText.attribute(.attachment, at: range.location, effectiveRange: nil) == nil)
+        #expect(mergedText.attribute(.underlineStyle, at: range.location, effectiveRange: nil) == nil)
+        #expect(mergedText.attribute(.font, at: range.location, effectiveRange: nil) != nil)
+        #expect(mergedText.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) != nil)
+        location = NSMaxRange(range)
+      }
+    }
   }
 }
 

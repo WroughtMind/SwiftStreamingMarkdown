@@ -44,7 +44,8 @@ public struct RenderableDocument: Equatable, Sendable {
   public init(plainText: String, config: MarkdownRenderConfig) {
     var attributes: [NSAttributedString.Key: Any] = [
       .font: config.paragraphStyle.textFonts.normal,
-      .foregroundColor: MDColor(config.paragraphStyle.textColor)
+      .foregroundColor: MDColor(config.paragraphStyle.textColor),
+      .typography: config.paragraphStyle.textFonts,
     ]
     if let kern = config.paragraphStyle.textFonts.preferredLetterSpacing {
       attributes[.kern] = kern

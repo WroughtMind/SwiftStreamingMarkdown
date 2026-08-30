@@ -22,7 +22,7 @@ public struct MarkdownView: View {
   ///   - text: The raw Markdown source to parse and render.
   ///   - config: Render configuration. Defaults to `.default`.
   ///   - listener: Optional listener that receives render and interaction events.
-  ///   - onRender: Called once after the first non-empty document is ready to render.
+  ///   - onRender: Called once when the first non-empty document surface appears.
   public init(
     text: String,
     config: MarkdownRenderConfig = .default,
@@ -39,8 +39,11 @@ public struct MarkdownView: View {
 
   public var body: some View {
     Group {
-      if let renderable = controller.renderable {
+      if let renderable = controller.renderable, !renderable.isEmpty {
         DocumentView(renderableDocument: renderable, config: config, listener: controller.listener)
+          .onAppear {
+            controller.reportRendered()
+          }
       } else {
         DocumentView(renderableDocument: .empty, config: config, listener: controller.listener)
       }
@@ -77,10 +80,13 @@ final class MarkdownViewController: ObservableObject {
     await MainActor.run {
       guard !Task.isCancelled else { return }
       self.renderable = renderable
-      if !renderable.isEmpty, !self.didRender {
-        self.didRender = true
-        self.onRender?()
-      }
     }
+  }
+
+  @MainActor
+  func reportRendered() {
+    guard !didRender else { return }
+    didRender = true
+    onRender?()
   }
 }

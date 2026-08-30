@@ -24,8 +24,6 @@ struct TableView: View {
   let rows: [[RowContent]]
   let columnMaxWidths: [Int: CGFloat]
 
-  private let defaultMaxColumnWidth: CGFloat = 200
-  @State private var scrollWidth: CGFloat = 0
   @State private var isExpanded: Bool = false
   @State private var isCopyPressed: Bool = false
   @State private var isCopyScaled: Bool = false
@@ -65,16 +63,22 @@ struct TableView: View {
         .accessibilityValue(String.itemPositionInTable(rowIndex: 1, totalRow: numOfRows + 1, columnIndex: colIdx + 1, totalColumn: headings.count))
       Spacer()
     }
-    .padding(12)
+    .padding(.horizontal, horizontalCellPadding)
+    .padding(.vertical, verticalCellPadding)
     .id("\(colIdx)-heading")
     .background(config.tableStyle.headerBackgroundColor)
     .applyHeaderBorder(colIndex: colIdx, colCount: headings.count, color: config.tableStyle.borderColor)
   }
 
   @ViewBuilder
-  var gridView: some View {
+  private func gridView(fittingAvailableWidth: Bool) -> some View {
     VStack(alignment: .leading, spacing: 0) {
-      TableLayout(columnCount: headings.count, columnMaxWidths: self.actualColumnMaxWidths()) {
+      TableLayout(
+        columnCount: headings.count,
+        columnMaxWidths: columnMaxWidths,
+        minimumColumnWidth: minimumColumnWidth,
+        fittingAvailableWidth: fittingAvailableWidth
+      ) {
         ForEach(0..<headings.count, id: \.self) { colIdx in
           headerView(colIdx: colIdx)
         }
@@ -88,15 +92,16 @@ struct TableView: View {
     }
   }
 
-  private func actualColumnMaxWidths() -> [CGFloat] {
-    let averageWidth = scrollWidth / CGFloat(headings.count)
-    var actualColumnMaxWidths = Array(repeating: CGFloat(0), count: headings.count)
-    for idx in 0..<headings.count {
-      let maxColumnWidth = columnMaxWidths[idx] ?? defaultMaxColumnWidth
-      actualColumnMaxWidths[idx] = max(averageWidth, maxColumnWidth)
-    }
+  private var horizontalCellPadding: CGFloat {
+    config.tableStyle.textFonts.normal.pointSize * 0.7
+  }
 
-    return actualColumnMaxWidths
+  private var verticalCellPadding: CGFloat {
+    config.tableStyle.textFonts.normal.pointSize * 0.5
+  }
+
+  private var minimumColumnWidth: CGFloat {
+    config.tableStyle.textFonts.normal.pointSize + horizontalCellPadding * 2
   }
 
   @ViewBuilder
@@ -111,7 +116,8 @@ struct TableView: View {
         Spacer()
       }
       .frame(maxHeight: .infinity)
-      .padding(12)
+      .padding(.horizontal, horizontalCellPadding)
+      .padding(.vertical, verticalCellPadding)
       .id("\(colIdx)-\(rowIdx)")
       .applyCellBorder(colIndex: colIdx, colCount: headings.count, rowIndex: rowIdx, rowCount: numOfRows, color: config.tableStyle.borderColor)
     case .text(let attributedString):
@@ -128,7 +134,8 @@ struct TableView: View {
         Spacer()
       }
       .frame(maxHeight: .infinity)
-      .padding(12)
+      .padding(.horizontal, horizontalCellPadding)
+      .padding(.vertical, verticalCellPadding)
       .id("\(colIdx)-\(rowIdx)")
       .applyCellBorder(colIndex: colIdx, colCount: headings.count, rowIndex: rowIdx, rowCount: numOfRows, color: config.tableStyle.borderColor)
     }
@@ -137,13 +144,13 @@ struct TableView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if controller != nil {
-        scrollView.onTapGesture {
+        tableContent.onTapGesture {
           withAnimation(.easeInOut(duration: 0.2)) {
             isExpanded.toggle()
           }
         }
       } else {
-        scrollView
+        tableContent
       }
 
       if isExpanded {
@@ -158,31 +165,15 @@ struct TableView: View {
     }
   }
 
-  var scrollView: some View {
-    ScrollView([.horizontal]) {
-      gridView
-        .overlay(
-          RoundedRectangle(cornerRadius: 12)
-            .inset(by: 0.5)
-            .stroke(config.tableStyle.borderColor, lineWidth: 1)
-        )
-        .cornerRadius(12)
-        .onWidthChange { newWidth in
-          scrollWidth = newWidth
-        }
-    }
-    .background {
-      GeometryReader { geo in
-        Color.clear
-          .onAppear {
-            scrollWidth = geo.size.width
-          }
-          .onChange(of: geo.size.width) { newValue in
-            scrollWidth = newValue
-          }
+  private var tableContent: some View {
+    ViewThatFits(in: .horizontal) {
+      gridView(fittingAvailableWidth: true)
+      ScrollView(.horizontal) {
+        gridView(fittingAvailableWidth: false)
       }
+      .scrollIndicators(.hidden)
     }
-    .scrollIndicators(.hidden)
+    .frame(maxWidth: .infinity, alignment: .center)
     .contentShape(Rectangle())
   }
 
@@ -238,22 +229,11 @@ struct TableView: View {
 extension View {
 
   func applyHeaderBorder(colIndex: Int, colCount: Int, color: Color) -> some View {
-    var edges: [Edge] = [.bottom]
-    if colIndex != colCount - 1 {
-      edges.append(.trailing)
-    }
-    return border(width: 1, edges: edges, color: color)
+    border(width: 1, edges: [.bottom], color: color)
   }
 
   func applyCellBorder(colIndex: Int, colCount: Int, rowIndex: Int, rowCount: Int, color: Color) -> some View {
-    var edges: [Edge] = []
-    if rowIndex < rowCount - 1 {
-      edges.append(.bottom)
-    }
-    if colIndex < colCount - 1 {
-      edges.append(.trailing)
-    }
-    return border(width: 1, edges: edges, color: color)
+    border(width: 1, edges: [.bottom], color: color)
   }
 
   @ViewBuilder
@@ -267,17 +247,22 @@ extension View {
 
 struct TableLayout: Layout {
   struct CacheData {
-    let columnWidths: [CGFloat]
-    let rowHeights: [CGFloat]
+    let naturalColumnWidths: [CGFloat]
+    var columnWidths: [CGFloat]
+    var rowHeights: [CGFloat]
   }
 
   let columnCount: Int
-  let columnMaxWidths: [CGFloat]
+  let columnMaxWidths: [Int: CGFloat]
+  let minimumColumnWidth: CGFloat
+  let fittingAvailableWidth: Bool
 
   private let defaultRowHeight: CGFloat = 44
 
   func makeCache(subviews: Subviews) -> CacheData {
-    guard columnCount > 0 else { return CacheData(columnWidths: [], rowHeights: []) }
+    guard columnCount > 0 else {
+      return CacheData(naturalColumnWidths: [], columnWidths: [], rowHeights: [])
+    }
     let rowCount = subviews.count / columnCount
 
     var columnWidths = Array(repeating: CGFloat(0), count: columnCount)
@@ -285,29 +270,63 @@ struct TableLayout: Layout {
       for col in 0..<columnCount {
         let index = row * columnCount + col
         let size = subviews[index].sizeThatFits(.unspecified)
-        columnWidths[col] = min(max(columnWidths[col], size.width), columnMaxWidths[col])
+        let maximumWidth = columnMaxWidths[col] ?? .greatestFiniteMagnitude
+        columnWidths[col] = min(max(columnWidths[col], size.width), maximumWidth)
       }
     }
+    columnWidths = columnWidths.map { max($0, minimumColumnWidth) }
 
-    var rowHeights = Array(repeating: CGFloat(0), count: rowCount)
-    for row in 0..<rowCount {
-      var rowHeight: CGFloat = 0
-      for col in 0..<columnCount {
-        let index = row * columnCount + col
-        let height = subviews[index].sizeThatFits(.init(width: columnWidths[col], height: nil)).height
-        let cellHeight = height.isFinite ? height : defaultRowHeight
-        rowHeight = max(rowHeight, cellHeight)
-      }
-      rowHeights[row] = rowHeight
-    }
-
-    return CacheData(columnWidths: columnWidths, rowHeights: rowHeights)
+    return CacheData(
+      naturalColumnWidths: columnWidths,
+      columnWidths: columnWidths,
+      rowHeights: rowHeights(subviews: subviews, columnWidths: columnWidths)
+    )
   }
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) -> CGSize {
+    if fittingAvailableWidth, let availableWidth = proposal.width {
+      cache.columnWidths = fittedColumnWidths(
+        cache.naturalColumnWidths,
+        availableWidth: availableWidth
+      )
+      cache.rowHeights = rowHeights(subviews: subviews, columnWidths: cache.columnWidths)
+    } else {
+      cache.columnWidths = cache.naturalColumnWidths
+      cache.rowHeights = rowHeights(subviews: subviews, columnWidths: cache.columnWidths)
+    }
     let totalWidth = cache.columnWidths.reduce(0, +)
     let totalHeight = cache.rowHeights.reduce(0, +)
     return CGSize(width: totalWidth, height: totalHeight)
+  }
+
+  private func fittedColumnWidths(
+    _ naturalWidths: [CGFloat],
+    availableWidth: CGFloat
+  ) -> [CGFloat] {
+    let naturalWidth = naturalWidths.reduce(0, +)
+    guard naturalWidth > availableWidth else { return naturalWidths }
+
+    let flexibleWidths = naturalWidths.map { max(0, $0 - minimumColumnWidth) }
+    let flexibleWidth = flexibleWidths.reduce(0, +)
+    let requiredReduction = naturalWidth - availableWidth
+    guard flexibleWidth >= requiredReduction, flexibleWidth > 0 else { return naturalWidths }
+
+    return zip(naturalWidths, flexibleWidths).map { natural, flexible in
+      natural - requiredReduction * (flexible / flexibleWidth)
+    }
+  }
+
+  private func rowHeights(subviews: Subviews, columnWidths: [CGFloat]) -> [CGFloat] {
+    let rowCount = subviews.count / columnCount
+    return (0..<rowCount).map { row in
+      (0..<columnCount).reduce(CGFloat(0)) { height, col in
+        let index = row * columnCount + col
+        let measuredHeight = subviews[index].sizeThatFits(
+          .init(width: columnWidths[col], height: nil)
+        ).height
+        return max(height, measuredHeight.isFinite ? measuredHeight : defaultRowHeight)
+      }
+    }
   }
 
   func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) {

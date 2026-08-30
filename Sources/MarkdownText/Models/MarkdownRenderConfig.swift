@@ -25,6 +25,8 @@ public struct MarkdownRenderConfig: Hashable, Sendable {
   public let paragraphStyle: MarkdownTextStyle
   /// Styling applied to tables.
   public let tableStyle: MarkdownTableTextStyle
+  /// Layout tokens for lists and block-quote chrome.
+  public let layoutStyle: MarkdownLayoutStyle
   /// Styling applied to inline runs such as bold, links, and inline code.
   public let inlineStyle: MarkdownInlineTextStyle
   /// Optional context-menu provider invoked on text selection. `nil` disables
@@ -53,6 +55,51 @@ public struct MarkdownRenderConfig: Hashable, Sendable {
   /// - Important: Image support is **experimental**. The behavior, API, and
   ///   rendering output may change in future releases. Defaults to `.disabled`.
   public let imageConfig: ImageConfig
+
+  /// Layout tokens that are not part of text typography.
+  public struct MarkdownLayoutStyle: Hashable, Sendable {
+    /// Leading position of list content at each nesting level, including the
+    /// marker column and marker spacing. `nil` derives the position from the
+    /// configured paragraph font.
+    public let listIndentation: CGFloat?
+    /// Space between a list marker and its content. `nil` derives the space
+    /// from the configured paragraph font.
+    public let listMarkerSpacing: CGFloat?
+    /// Vertical space between list items. `nil` derives the space from the
+    /// configured paragraph font.
+    public let listItemSpacing: CGFloat?
+    /// List marker color. `nil` reuses the ordered-list text color.
+    public let listMarkerColor: Color?
+    /// Color of the vertical rule beside nested block quotes.
+    public let blockQuoteBorderColor: Color
+    /// Width of the vertical rule beside nested block quotes.
+    public let blockQuoteBorderWidth: CGFloat
+    /// Space between the block-quote rule and its content. `nil` derives the
+    /// space from the configured paragraph font.
+    public let blockQuoteContentSpacing: CGFloat?
+
+    public init(
+      listIndentation: CGFloat? = nil,
+      listMarkerSpacing: CGFloat? = nil,
+      listItemSpacing: CGFloat? = nil,
+      listMarkerColor: Color? = nil,
+      blockQuoteBorderColor: Color,
+      blockQuoteBorderWidth: CGFloat = 3,
+      blockQuoteContentSpacing: CGFloat? = nil
+    ) {
+      self.listIndentation = listIndentation
+      self.listMarkerSpacing = listMarkerSpacing
+      self.listItemSpacing = listItemSpacing
+      self.listMarkerColor = listMarkerColor
+      self.blockQuoteBorderColor = blockQuoteBorderColor
+      self.blockQuoteBorderWidth = blockQuoteBorderWidth
+      self.blockQuoteContentSpacing = blockQuoteContentSpacing
+    }
+
+    public static let `default` = MarkdownLayoutStyle(
+      blockQuoteBorderColor: Color.Theme.Stroke.Muted.Muted300
+    )
+  }
 
   /// Font and color style for a uniformly-styled run of markdown text.
   public struct MarkdownTextStyle: Hashable, Sendable {
@@ -276,6 +323,7 @@ public struct MarkdownRenderConfig: Hashable, Sendable {
     orderedListStyle: MarkdownTextStyle = MarkdownRenderConfig.defaultOrderedListStyle,
     paragraphStyle: MarkdownTextStyle = MarkdownRenderConfig.defaultParagraphStyle,
     tableStyle: MarkdownTableTextStyle = MarkdownRenderConfig.defaultTableStyle,
+    layoutStyle: MarkdownLayoutStyle = .default,
     inlineStyle: MarkdownInlineTextStyle = MarkdownRenderConfig.defaultInlineStyle,
     textContextMenu: TextContextMenu? = nil,
     citationConfig: CitationConfig = .default,
@@ -291,6 +339,7 @@ public struct MarkdownRenderConfig: Hashable, Sendable {
     self.orderedListStyle = orderedListStyle
     self.paragraphStyle = paragraphStyle
     self.tableStyle = tableStyle
+    self.layoutStyle = layoutStyle
     self.inlineStyle = inlineStyle
     self.textContextMenu = textContextMenu
     self.citationConfig = citationConfig

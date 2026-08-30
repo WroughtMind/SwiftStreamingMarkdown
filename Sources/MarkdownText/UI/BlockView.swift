@@ -39,20 +39,26 @@ struct SingleBlockView: View {
     Group {
       switch renderable {
       case .heading(_, _, let contents):
-        ParagraphView(contents: contents)
+        ParagraphView(contents: contents, lineSpacing: contents.preferredLineSpacing)
           .transition(.opacity)
           .accessibilityAddTraits(.isHeader)
       case .paragraph(_, let contents):
-        ParagraphView(contents: contents, lineSpacing: 5)
+        ParagraphView(contents: contents, lineSpacing: contents.preferredLineSpacing)
           .fixedSize(horizontal: false, vertical: true)
           .transition(.opacity)
       case .latex(_, let latexString):
-        ScrollView(.horizontal) {
+        ViewThatFits(in: .horizontal) {
           HStack(spacing: 0) {
-            BlockMathView(latex: latexString, color: config.paragraphStyle.textColor)
-            Spacer()
+            Spacer(minLength: 0)
+            blockMath(latexString)
+            Spacer(minLength: 0)
           }
-        }.scrollIndicators(.hidden)
+          ScrollView(.horizontal) {
+            blockMath(latexString)
+          }
+          .scrollIndicators(.hidden)
+        }
+        .frame(maxWidth: .infinity)
       case .orderedList(_, let items):
         OrderedListView(items: items)
       case .unorderedList(_, let items, let nestedLevel):
@@ -73,5 +79,32 @@ struct SingleBlockView: View {
           .id(id)
       }
     }
+  }
+
+  private func blockMath(_ latex: String) -> some View {
+    BlockMathView(
+      latex: latex,
+      color: config.paragraphStyle.textColor,
+      pointSize: config.paragraphStyle.textFonts.normal.pointSize
+    )
+  }
+}
+
+private extension NSAttributedString {
+  var preferredLineSpacing: CGFloat? {
+    guard length > 0 else { return nil }
+    var textFonts: TextFonts?
+    enumerateAttribute(
+      .typography,
+      in: NSRange(location: 0, length: length)
+    ) { value, _, stop in
+      guard let value = value as? TextFonts else { return }
+      textFonts = value
+      stop.pointee = true
+    }
+    guard let textFonts, let preferredLineHeight = textFonts.preferredLineHeight else {
+      return nil
+    }
+    return max(preferredLineHeight - textFonts.normal.lineHeight, 0)
   }
 }

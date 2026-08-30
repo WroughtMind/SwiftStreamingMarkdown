@@ -12,32 +12,65 @@ struct OrderedListView: View {
   @Environment(\.markdownConfig) var config: MarkdownRenderConfig
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8, content: {
+    VStack(alignment: .leading, spacing: listItemSpacing, content: {
       ForEach(0..<items.count, id: \.self) { idx in
-        HStack(alignment: .centerOfFirstLine, spacing: 11) {
-          Text(verbatim: "\(idx+1).")
-            .font(config.orderedListStyle.textFonts, bold: true)
-            .foregroundStyle(config.orderedListStyle.textColor)
-            .transition(.opacity)
-          if let firstChild = items[idx].children.first {
-            if case .paragraph(_, let contents) = firstChild {
-              // Wrap the SingleBlockView to provide proper baseline alignment. This is to fix the mis-alignment when the view is rendered off-screen, e.g. snapshot.
-              ListItemContentWrapper(paragraphContents: contents) {
+        Grid(
+          alignment: .leading,
+          horizontalSpacing: listMarkerSpacing,
+          verticalSpacing: listItemSpacing
+        ) {
+          GridRow(alignment: .centerOfFirstLine) {
+            Text(verbatim: "\(idx+1).")
+              .font(config.orderedListStyle.textFonts, bold: true)
+              .foregroundStyle(listMarkerColor)
+              .transition(.opacity)
+              .lineLimit(1)
+              .fixedSize(horizontal: true, vertical: false)
+              .frame(width: listMarkerColumnWidth, alignment: .trailing)
+            if let firstChild = items[idx].children.first {
+              if case .paragraph(_, let contents) = firstChild {
+                ListItemContentWrapper(paragraphContents: contents) {
+                  SingleBlockView(renderable: firstChild)
+                }
+                .accessibilityLabel(Text(markdownListAccessibilityLabel(for: contents.string, at: idx, length: items.count)))
+              } else {
                 SingleBlockView(renderable: firstChild)
               }
-              .accessibilityLabel(Text(markdownListAccessibilityLabel(for: contents.string, at: idx, length: items.count)))
-            } else {
-              SingleBlockView(renderable: firstChild)
             }
           }
-          Spacer()
-        }
-        if items[idx].children.count > 1 {
-          BlockView(renderables: Array(items[idx].children.dropFirst()))
-            .padding([.leading], 0)
+          if items[idx].children.count > 1 {
+            GridRow(alignment: .top) {
+              Color.clear
+                .frame(width: listMarkerColumnWidth, height: 0)
+              BlockView(renderables: Array(items[idx].children.dropFirst()))
+            }
+          }
         }
       }
     })
+  }
+
+  private var listIndentation: CGFloat {
+    config.layoutStyle.listIndentation
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 1.45
+  }
+
+  private var listMarkerSpacing: CGFloat {
+    config.layoutStyle.listMarkerSpacing
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 0.1
+  }
+
+  private var listMarkerColumnWidth: CGFloat {
+    max(0, listIndentation - listMarkerSpacing)
+  }
+
+  private var listItemSpacing: CGFloat {
+    config.layoutStyle.listItemSpacing
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 0.26
+  }
+
+  private var listMarkerColor: Color {
+    config.layoutStyle.listMarkerColor ?? config.orderedListStyle.textColor
   }
 }
 

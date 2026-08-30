@@ -14,7 +14,7 @@ extension Markdown.Document {
       .blockConvertibleChildren
       .map { $0.convert(attributeContainer: NSAttributeContainer(), config: config) }
     #if canImport(AppKit)
-    return renderables.mergingAdjacentParagraphs(spacing: config.blockSpacing)
+    return renderables.mergingAdjacentParagraphs(config: config)
     #else
     return renderables
     #endif
@@ -23,7 +23,7 @@ extension Markdown.Document {
 
 #if canImport(AppKit)
 private extension Array where Element == MarkdownRenderable {
-  func mergingAdjacentParagraphs(spacing: CGFloat) -> [MarkdownRenderable] {
+  func mergingAdjacentParagraphs(config: MarkdownRenderConfig) -> [MarkdownRenderable] {
     var result: [MarkdownRenderable] = []
     for renderable in self {
       guard
@@ -40,12 +40,30 @@ private extension Array where Element == MarkdownRenderable {
         let paragraphStyle = (
           merged.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
         )?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        paragraphStyle.paragraphSpacing = spacing
+        paragraphStyle.paragraphSpacing = config.blockSpacing
         let paragraphRange = (merged.string as NSString).paragraphRange(
           for: NSRange(location: location, length: 0)
         )
         merged.addAttribute(.paragraphStyle, value: paragraphStyle, range: paragraphRange)
-        merged.append(NSAttributedString(string: "\n"))
+        let inheritedAttributes = merged.attributes(at: location, effectiveRange: nil)
+        var lineBreakAttributes: [NSAttributedString.Key: Any] = [
+          .font: config.paragraphStyle.textFonts.normal,
+          .foregroundColor: MDColor(config.paragraphStyle.textColor),
+          .paragraphStyle: paragraphStyle,
+          .typography: config.paragraphStyle.textFonts,
+        ]
+        if let kern = config.paragraphStyle.textFonts.preferredLetterSpacing {
+          lineBreakAttributes[.kern] = kern
+        }
+        for (key, value) in inheritedAttributes {
+          switch key {
+          case .font, .foregroundColor, .paragraphStyle, .typography, .kern:
+            lineBreakAttributes[key] = value
+          default:
+            break
+          }
+        }
+        merged.append(NSAttributedString(string: "\n", attributes: lineBreakAttributes))
       }
       merged.append(next)
       result[result.count - 1] = .paragraph(id: id, content: merged)

@@ -20,13 +20,14 @@ struct BlockQuoteView: View {
 
 private struct InternalBlockQuoteView: View {
   let item: BlockQuoteType
+  @Environment(\.markdownConfig) private var config
 
   var body: some View {
-    HStack(spacing: 8.0) {
+    HStack(spacing: blockQuoteContentSpacing) {
 
       if item.isNested {
         QuoteDivider()
-          .frame(width: 3.0)
+          .frame(width: config.layoutStyle.blockQuoteBorderWidth)
       }
 
       VStack(spacing: 12.0) {
@@ -51,6 +52,11 @@ private struct InternalBlockQuoteView: View {
     }
     .fixedSize(horizontal: false, vertical: true)
   }
+
+  private var blockQuoteContentSpacing: CGFloat {
+    config.layoutStyle.blockQuoteContentSpacing
+      ?? config.paragraphStyle.textFonts.normal.pointSize
+  }
 }
 
 struct QuoteTextView: View {
@@ -68,9 +74,11 @@ struct QuoteTextView: View {
 }
 
 struct QuoteDivider: View {
+  @Environment(\.markdownConfig) private var config
+
   var body: some View {
     RoundedRectangle(cornerRadius: 8.0, style: .continuous)
-      .foregroundStyle(Color.Theme.Stroke.Muted.Muted300)
+      .foregroundStyle(config.layoutStyle.blockQuoteBorderColor)
   }
 }
 

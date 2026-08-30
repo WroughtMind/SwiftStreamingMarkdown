@@ -10,32 +10,62 @@ struct UnorderedListView: View {
 
   let items: [MarkdownListItem]
   let nestedLevel: Int
+  @Environment(\.markdownConfig) private var config
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8, content: {
+    VStack(alignment: .leading, spacing: listItemSpacing, content: {
       ForEach(0..<items.count, id: \.self) { idx in
-        HStack(alignment: .centerOfFirstLine, spacing: 1) {
-          bulletView(forListItem: items[idx])
-          if let firstChild = items[idx].children.first {
-            if case .paragraph(_, let contents) = firstChild {
-              // Wrap the SingleBlockView to provide proper baseline alignment
-              ListItemContentWrapper(paragraphContents: contents) {
+        Grid(
+          alignment: .leading,
+          horizontalSpacing: listMarkerSpacing,
+          verticalSpacing: listItemSpacing
+        ) {
+          GridRow(alignment: .centerOfFirstLine) {
+            bulletView(forListItem: items[idx])
+            if let firstChild = items[idx].children.first {
+              if case .paragraph(_, let contents) = firstChild {
+                ListItemContentWrapper(paragraphContents: contents) {
+                  SingleBlockView(renderable: firstChild)
+                }
+                .accessibilityLabel(Text(listItemAccessibilityLabel(for: contents.string, at: idx, checkbox: items[idx].checkbox)))
+              } else {
                 SingleBlockView(renderable: firstChild)
               }
-              .accessibilityLabel(Text(listItemAccessibilityLabel(for: contents.string, at: idx, checkbox: items[idx].checkbox)))
-            } else {
-              SingleBlockView(renderable: firstChild)
             }
           }
-          Spacer()
-        }
-        if items[idx].children.count > 1 {
-          BlockView(renderables: Array(items[idx].children.dropFirst()))
-            .padding([.leading], 0)
+          if items[idx].children.count > 1 {
+            GridRow(alignment: .top) {
+              Color.clear
+                .frame(width: listMarkerColumnWidth, height: 0)
+              BlockView(renderables: Array(items[idx].children.dropFirst()))
+            }
+          }
         }
       }
     })
-    .padding([.leading], CGFloat(nestedLevel) * 8)
+  }
+
+  private var listIndentation: CGFloat {
+    config.layoutStyle.listIndentation
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 1.45
+  }
+
+  private var listMarkerSpacing: CGFloat {
+    config.layoutStyle.listMarkerSpacing
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 0.1
+  }
+
+  private var listMarkerColumnWidth: CGFloat {
+    max(0, listIndentation - listMarkerSpacing)
+  }
+
+  private var listItemSpacing: CGFloat {
+    config.layoutStyle.listItemSpacing
+      ?? config.paragraphStyle.textFonts.normal.pointSize * 0.26
+  }
+
+  private var listMarkerColor: Color {
+    config.layoutStyle.listMarkerColor ?? config.orderedListStyle.textColor
   }
 
   func bulletView(forListItem listItem: MarkdownListItem) -> some View {
@@ -43,23 +73,28 @@ struct UnorderedListView: View {
       if let checkbox = listItem.checkbox {
         Image(systemName: checkbox == .checked ? "checkmark.square.fill" : "square")
           .resizable()
-          .frame(width: 12, height: 12)
-          .foregroundStyle( Color.Theme.Foreground.Primary.Primary450)
+          .frame(width: markerFontSize * 0.86, height: markerFontSize * 0.86)
+          .foregroundStyle(listMarkerColor)
           .transition(.opacity)
       } else if nestedLevel % 2 == 0 {
         Image(systemName: "circle.fill")
           .resizable()
-          .frame(width: 4, height: 4)
-          .foregroundStyle( Color.Theme.Foreground.Primary.Primary450)
+          .frame(width: markerFontSize * 0.28, height: markerFontSize * 0.28)
+          .foregroundStyle(listMarkerColor)
           .transition(.opacity)
       } else {
         Image(systemName: "circle")
           .resizable()
-          .frame(width: 4, height: 4)
-          .foregroundStyle( Color.Theme.Foreground.Primary.Primary450)
+          .frame(width: markerFontSize * 0.28, height: markerFontSize * 0.28)
+          .foregroundStyle(listMarkerColor)
           .transition(.opacity)
       }
-    }.frame(width: 22.0)
+    }
+    .frame(width: listMarkerColumnWidth, alignment: .trailing)
+  }
+
+  private var markerFontSize: CGFloat {
+    config.paragraphStyle.textFonts.normal.pointSize
   }
 
   private func listItemAccessibilityLabel(for content: String, at index: Int, checkbox: MarkdownListItem.Checkbox?) -> String {

@@ -10,14 +10,25 @@ import SwiftUI
 /// extend the selection.
 struct SelectableTextView: View {
   let text: String
+  let textStyle: MarkdownRenderConfig.MarkdownTextStyle
+  let selectionColor: Color
+  let selectedTextColor: Color?
 
   var body: some View {
-    SelectableTextViewRepresentable(text: text)
+    SelectableTextViewRepresentable(
+      text: text,
+      textStyle: textStyle,
+      selectionColor: selectionColor,
+      selectedTextColor: selectedTextColor
+    )
   }
 }
 
-private func selectionAttributedString(for text: String) -> NSAttributedString {
-  let fonts = Typography.baseTextFonts
+private func selectionAttributedString(
+  for text: String,
+  style: MarkdownRenderConfig.MarkdownTextStyle
+) -> NSAttributedString {
+  let fonts = style.textFonts
   let font = fonts.normal
   let paragraphStyle = NSMutableParagraphStyle()
   paragraphStyle.alignment = .left
@@ -26,7 +37,7 @@ private func selectionAttributedString(for text: String) -> NSAttributedString {
   }
   var attributes: [NSAttributedString.Key: Any] = [
     .font: font,
-    .foregroundColor: MDColor(Color.Theme.Foreground.Primary.Primary800),
+    .foregroundColor: MDColor(style.textColor),
     .paragraphStyle: paragraphStyle
   ]
   if let kern = fonts.preferredLetterSpacing {
@@ -47,11 +58,20 @@ private func firstParagraphRange(in text: String) -> NSRange {
   return NSRange(location: 0, length: nsText.length)
 }
 
+private func clampedSelectionRange(_ range: NSRange, textLength: Int) -> NSRange {
+  let location = min(range.location, textLength)
+  let length = min(range.length, textLength - location)
+  return NSRange(location: location, length: length)
+}
+
 #if canImport(UIKit)
 import UIKit
 
 private struct SelectableTextViewRepresentable: UIViewRepresentable {
   let text: String
+  let textStyle: MarkdownRenderConfig.MarkdownTextStyle
+  let selectionColor: Color
+  let selectedTextColor: Color?
 
   func makeUIView(context: Context) -> UITextView {
     let textView = UITextView()
@@ -59,8 +79,8 @@ private struct SelectableTextViewRepresentable: UIViewRepresentable {
     textView.isSelectable = true
     textView.backgroundColor = .clear
     textView.showsVerticalScrollIndicator = false
-    textView.tintColor = UIColor(Color.Theme.Accent.Accent600)
-    textView.attributedText = selectionAttributedString(for: text)
+    textView.tintColor = UIColor(selectionColor)
+    textView.attributedText = selectionAttributedString(for: text, style: textStyle)
     DispatchQueue.main.async {
       let range = firstParagraphRange(in: text)
       if let start = textView.position(from: textView.beginningOfDocument, offset: range.location),
@@ -73,9 +93,16 @@ private struct SelectableTextViewRepresentable: UIViewRepresentable {
   }
 
   func updateUIView(_ textView: UITextView, context: Context) {
-    if textView.attributedText.string != text {
-      textView.attributedText = selectionAttributedString(for: text)
+    let updatedText = selectionAttributedString(for: text, style: textStyle)
+    if !textView.attributedText.isEqual(to: updatedText) {
+      let selectedRange = textView.selectedRange
+      textView.attributedText = updatedText
+      textView.selectedRange = clampedSelectionRange(
+        selectedRange,
+        textLength: updatedText.length
+      )
     }
+    textView.tintColor = UIColor(selectionColor)
   }
 }
 #elseif canImport(AppKit)
@@ -83,6 +110,9 @@ import AppKit
 
 private struct SelectableTextViewRepresentable: NSViewRepresentable {
   let text: String
+  let textStyle: MarkdownRenderConfig.MarkdownTextStyle
+  let selectionColor: Color
+  let selectedTextColor: Color?
 
   func makeNSView(context: Context) -> NSScrollView {
     let scrollView = NSTextView.scrollableTextView()
@@ -96,7 +126,11 @@ private struct SelectableTextViewRepresentable: NSViewRepresentable {
     textView.isSelectable = true
     textView.drawsBackground = false
     textView.textContainerInset = NSSize(width: 0, height: 0)
-    textView.textStorage?.setAttributedString(selectionAttributedString(for: text))
+    textView.selectedTextAttributes = markdownSelectedTextAttributes(
+      selectionColor: selectionColor,
+      selectedTextColor: selectedTextColor
+    )
+    textView.textStorage?.setAttributedString(selectionAttributedString(for: text, style: textStyle))
 
     DispatchQueue.main.async {
       textView.setSelectedRange(firstParagraphRange(in: text))
@@ -107,9 +141,19 @@ private struct SelectableTextViewRepresentable: NSViewRepresentable {
 
   func updateNSView(_ scrollView: NSScrollView, context: Context) {
     guard let textView = scrollView.documentView as? NSTextView else { return }
-    if textView.string != text {
-      textView.textStorage?.setAttributedString(selectionAttributedString(for: text))
+    let updatedText = selectionAttributedString(for: text, style: textStyle)
+    if textView.attributedString().isEqual(to: updatedText) == false {
+      let selectedRange = textView.selectedRange()
+      textView.textStorage?.setAttributedString(updatedText)
+      textView.setSelectedRange(clampedSelectionRange(
+        selectedRange,
+        textLength: updatedText.length
+      ))
     }
+    textView.selectedTextAttributes = markdownSelectedTextAttributes(
+      selectionColor: selectionColor,
+      selectedTextColor: selectedTextColor
+    )
   }
 }
 #endif

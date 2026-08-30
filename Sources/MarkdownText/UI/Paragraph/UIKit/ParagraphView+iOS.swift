@@ -25,6 +25,7 @@ struct ParagraphView: UIViewRepresentable {
     view.setParagraphContents(contents, lineSpacing: lineSpacing, animatedByWord: false)
     view.setTextContextMenu(config.resolvedTextContextMenu)
     view.setMarkdownController(markdownController)
+    view.tintColor = UIColor(config.textSelectionConfig.selectionColor)
 
     if config.shouldAnimateText {
       view.alpha = 0
@@ -43,6 +44,7 @@ struct ParagraphView: UIViewRepresentable {
     }
     view.setTextContextMenu(config.resolvedTextContextMenu)
     view.setMarkdownController(markdownController)
+    view.tintColor = UIColor(config.textSelectionConfig.selectionColor)
   }
 
   // If we don't implement this function, the snapshot tests will fail with incorrect sizing.
