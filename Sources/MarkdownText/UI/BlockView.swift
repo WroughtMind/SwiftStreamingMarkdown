@@ -17,7 +17,7 @@ struct BlockView: View {
   }
 
   var body: some View {
-    LazyVStack(alignment: .leading, spacing: config.blockSpacing) {
+    VStack(alignment: .leading, spacing: config.blockSpacing) {
       ForEach(renderables) { renderable in
         SingleBlockView(renderable: renderable)
       }
