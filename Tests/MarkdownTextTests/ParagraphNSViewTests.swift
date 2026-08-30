@@ -47,10 +47,54 @@ struct ParagraphNSViewTests {
     #expect(view.renderedPrefixMatches(appendedContent, length: initialContent.length))
     view.setParagraphContents(appendedContent, animatedByWord: false)
 
+    let selectionBackground = NSColor(
+      calibratedRed: 0.72,
+      green: 0.24,
+      blue: 0.18,
+      alpha: 1
+    )
+    let selectionForeground = NSColor.white
+    view.selectedTextAttributes = [
+      .backgroundColor: selectionBackground,
+      .foregroundColor: selectionForeground,
+    ]
+    let attachmentLocation = NSTextContentStorage().documentRange.location
+    var formulaProviders: [NSTextAttachmentViewProvider] = []
+    view.textStorage?.enumerateAttribute(
+      .attachment,
+      in: NSRange(location: 0, length: view.textStorage?.length ?? 0)
+    ) { value, _, _ in
+      guard let attachment = value as? NSTextAttachment,
+            LatexAttachmentData.decode(from: attachment) != nil else { return }
+      let provider = LatexViewProvider(
+        textAttachment: attachment,
+        parentView: view,
+        textLayoutManager: nil,
+        location: attachmentLocation
+      )
+      provider.loadView()
+      formulaProviders.append(provider)
+    }
+
+    let formulaViews = formulaProviders.compactMap(\.view)
+    #expect(formulaViews.count == 2)
+    #expect(formulaViews.allSatisfy { $0 is FormulaSelectionDisplaying })
+
     view.setSelectedRange(NSRange(location: 0, length: view.string.utf16.count))
-    let copied = view.textStorage?.attributedSubstring(from: view.selectedRange()).markdownSourceText
+    #expect(view.selectedRange() == NSRange(location: 0, length: view.string.utf16.count))
+    NotificationCenter.default.post(name: NSTextView.didChangeSelectionNotification, object: view)
+    #expect(formulaViews.allSatisfy { $0.layer?.backgroundColor == selectionBackground.cgColor })
+
+    let pasteboard = NSPasteboard.withUniqueName()
+    _ = pasteboard.clearContents()
+    #expect(view.writeSelection(to: pasteboard, types: [.string]))
+    let copied = pasteboard.string(forType: .string)
     #expect(copied == "first \\(x + 1\\)\n$$\ny = 2\n$$\nsecond")
     #expect(copied?.contains("\u{FFFC}") == false)
+
+    view.setSelectedRange(NSRange(location: view.string.utf16.count - 1, length: 1))
+    NotificationCenter.default.post(name: NSTextView.didChangeSelectionNotification, object: view)
+    #expect(formulaViews.allSatisfy { $0.layer?.backgroundColor == NSColor.clear.cgColor })
 
     let paragraphStyle = initialContent.attribute(
       .paragraphStyle,

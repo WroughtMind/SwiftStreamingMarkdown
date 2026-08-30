@@ -45,6 +45,10 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
   private let fontSize: CGFloat
   private let textColor: MDColor
   private let displayMode: LatexAttachmentData.DisplayMode
+  #if canImport(AppKit)
+  private weak var parentParagraphView: ParagraphNSView?
+  private weak var representedAttachment: NSTextAttachment?
+  #endif
 
   private struct DecodedAttachment {
     var latex: String = ""
@@ -75,6 +79,8 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
     (latex, fontSize, textColor, displayMode) = (
       decoded.latex, decoded.fontSize, decoded.textColor, decoded.displayMode
     )
+    parentParagraphView = parentView as? ParagraphNSView
+    representedAttachment = attachment
     super.init(textAttachment: attachment, parentView: parentView,
                textLayoutManager: textLayoutManager, location: location)
     tracksTextAttachmentViewBounds = true
@@ -116,11 +122,24 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
     label.setContentHuggingPriority(.defaultHigh, for: .vertical)
     #if canImport(AppKit)
     let naturalSize = label.intrinsicContentSize
+    let attachmentView: NSView & FormulaSelectionDisplaying
     if displayMode == .block {
-      self.view = BlockLatexAttachmentView(label: label, naturalSize: naturalSize)
-      return
+      attachmentView = BlockLatexAttachmentView(
+        label: label,
+        naturalSize: naturalSize,
+        originalTextColor: textColor
+      )
+    } else {
+      attachmentView = PassthroughMathView(
+        label: label,
+        naturalSize: naturalSize,
+        originalTextColor: textColor
+      )
     }
-    self.view = PassthroughMathView(label: label, naturalSize: naturalSize)
+    self.view = attachmentView
+    if let attachment = representedAttachment {
+      parentParagraphView?.registerFormulaSelectionView(attachmentView, for: attachment)
+    }
     #else
     self.view = label
     #endif
@@ -166,14 +185,18 @@ final class LatexViewProvider: NSTextAttachmentViewProvider {
 }
 
 #if canImport(AppKit)
-private final class PassthroughMathView: NSView {
+private final class PassthroughMathView: NSView, FormulaSelectionDisplaying {
   let label: MTMathUILabel
   let naturalSize: CGSize
+  private let originalTextColor: NSColor
 
-  init(label: MTMathUILabel, naturalSize: CGSize) {
+  init(label: MTMathUILabel, naturalSize: CGSize, originalTextColor: NSColor) {
     self.label = label
     self.naturalSize = naturalSize
+    self.originalTextColor = originalTextColor
     super.init(frame: .zero)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.clear.cgColor
     addSubview(label)
   }
 
@@ -182,21 +205,32 @@ private final class PassthroughMathView: NSView {
   override var intrinsicContentSize: NSSize { naturalSize }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+  func setFormulaSelected(
+    _ isSelected: Bool,
+    backgroundColor: NSColor?,
+    textColor: NSColor?
+  ) {
+    layer?.backgroundColor = isSelected ? backgroundColor?.cgColor : NSColor.clear.cgColor
+    label.textColor = isSelected ? (textColor ?? originalTextColor) : originalTextColor
+  }
+
   override func layout() {
     super.layout()
     label.frame = bounds
   }
 }
 
-private final class BlockLatexAttachmentView: NSView {
+private final class BlockLatexAttachmentView: NSView, FormulaSelectionDisplaying {
   let label: MTMathUILabel
   let naturalSize: CGSize
+  private let originalTextColor: NSColor
   private let scrollView = NSScrollView()
   private let formulaDocumentView = NSView()
 
-  init(label: MTMathUILabel, naturalSize: CGSize) {
+  init(label: MTMathUILabel, naturalSize: CGSize, originalTextColor: NSColor) {
     self.label = label
     self.naturalSize = naturalSize
+    self.originalTextColor = originalTextColor
     super.init(frame: .zero)
     wantsLayer = true
     layer?.backgroundColor = NSColor.clear.cgColor
@@ -214,6 +248,15 @@ private final class BlockLatexAttachmentView: NSView {
 
   override func hitTest(_ point: NSPoint) -> NSView? {
     bounds.contains(point) ? self : nil
+  }
+
+  func setFormulaSelected(
+    _ isSelected: Bool,
+    backgroundColor: NSColor?,
+    textColor: NSColor?
+  ) {
+    layer?.backgroundColor = isSelected ? backgroundColor?.cgColor : NSColor.clear.cgColor
+    label.textColor = isSelected ? (textColor ?? originalTextColor) : originalTextColor
   }
 
   override func layout() {

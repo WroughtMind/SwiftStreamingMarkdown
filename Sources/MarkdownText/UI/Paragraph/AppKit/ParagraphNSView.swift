@@ -15,6 +15,22 @@ private struct CachedParagraphNSViewSize {
   let targetWidth: CGFloat
 }
 
+protocol FormulaSelectionDisplaying: AnyObject {
+  func setFormulaSelected(
+    _ isSelected: Bool,
+    backgroundColor: NSColor?,
+    textColor: NSColor?
+  )
+}
+
+private final class WeakFormulaSelectionView {
+  weak var value: (any FormulaSelectionDisplaying)?
+
+  init(_ value: any FormulaSelectionDisplaying) {
+    self.value = value
+  }
+}
+
 class ParagraphNSView: NSTextView {
   private static let jsonEncoder = JSONEncoder()
   static let animationDuration: CFTimeInterval = ParagraphAnimationConstants.fadeInDuration
@@ -25,6 +41,13 @@ class ParagraphNSView: NSTextView {
   private var activeAnimations: [FadeAnimationData] = []
   private var fadeAnimationDisplayLink: CADisplayLink?
   private var cachedSize: CachedParagraphNSViewSize?
+  private var formulaSelectionViews: [ObjectIdentifier: WeakFormulaSelectionView] = [:]
+
+  override var selectedTextAttributes: [NSAttributedString.Key: Any] {
+    didSet {
+      updateFormulaSelectionViews()
+    }
+  }
 
   var textContextMenu: TextContextMenu?
   var markdownController: MarkdownController?
@@ -53,6 +76,11 @@ class ParagraphNSView: NSTextView {
   }
 
   deinit {
+    NotificationCenter.default.removeObserver(
+      self,
+      name: NSTextView.didChangeSelectionNotification,
+      object: self
+    )
     tearDownDisplayLink()
     activeAnimations.removeAll()
   }
@@ -299,10 +327,66 @@ class ParagraphNSView: NSTextView {
 
     linkTextAttributes = [:]
 
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(textSelectionDidChange(_:)),
+      name: NSTextView.didChangeSelectionNotification,
+      object: self
+    )
+
     setContentHuggingPriority(.defaultHigh, for: .vertical)
     setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
     setContentHuggingPriority(.defaultLow, for: .horizontal)
     setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+  }
+
+  func registerFormulaSelectionView(
+    _ view: any FormulaSelectionDisplaying,
+    for attachment: NSTextAttachment
+  ) {
+    formulaSelectionViews[ObjectIdentifier(attachment)] = WeakFormulaSelectionView(view)
+    updateFormulaSelectionViews()
+  }
+
+  @objc private func textSelectionDidChange(_ notification: Notification) {
+    updateFormulaSelectionViews()
+  }
+
+  private func updateFormulaSelectionViews() {
+    guard !formulaSelectionViews.isEmpty else { return }
+
+    var selectedAttachmentIDs: Set<ObjectIdentifier> = []
+    if let textStorage, textStorage.length > 0 {
+      let range = NSIntersectionRange(
+        selectedRange(),
+        NSRange(location: 0, length: textStorage.length)
+      )
+      if range.length > 0 {
+        textStorage.enumerateAttribute(.attachment, in: range) { value, _, _ in
+          if let attachment = value as? NSTextAttachment {
+            selectedAttachmentIDs.insert(ObjectIdentifier(attachment))
+          }
+        }
+      }
+    }
+
+    let backgroundColor = selectedTextAttributes[.backgroundColor] as? NSColor
+    let textColor = selectedTextAttributes[.foregroundColor] as? NSColor
+    var staleIDs: [ObjectIdentifier] = []
+    for (id, weakView) in formulaSelectionViews {
+      guard let view = weakView.value else {
+        staleIDs.append(id)
+        continue
+      }
+      view.setFormulaSelected(
+        selectedAttachmentIDs.contains(id),
+        backgroundColor: backgroundColor,
+        textColor: textColor
+      )
+    }
+    for id in staleIDs {
+      formulaSelectionViews.removeValue(forKey: id)
+    }
   }
 
   // MARK: - Accessibility
@@ -433,6 +517,28 @@ class ParagraphNSView: NSTextView {
   }
 
   // MARK: - Context Menu
+
+  override var writablePasteboardTypes: [NSPasteboard.PasteboardType] {
+    var types = super.writablePasteboardTypes
+    if !types.contains(.string) {
+      types.append(.string)
+    }
+    return types
+  }
+
+  override func writeSelection(
+    to pboard: NSPasteboard,
+    types: [NSPasteboard.PasteboardType]
+  ) -> Bool {
+    pboard.declareTypes(types, owner: nil)
+    var wroteAnyType = false
+    for type in types {
+      if writeSelection(to: pboard, type: type) {
+        wroteAnyType = true
+      }
+    }
+    return wroteAnyType
+  }
 
   override func writeSelection(
     to pboard: NSPasteboard,
