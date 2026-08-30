@@ -465,6 +465,48 @@ final class LaTexPreProcessorTests: XCTestCase {
       return ""
     }
 
+    func reflectedAccent(in display: MTDisplay) -> MTDisplay? {
+      if let reflectedValue = Mirror(reflecting: display).children.first(where: { $0.label == "accent" })?.value {
+        let valueMirror = Mirror(reflecting: reflectedValue)
+        if valueMirror.displayStyle == .optional {
+          if let unwrapped = valueMirror.children.first?.value as? MTDisplay {
+            return unwrapped
+          }
+        } else if let accent = reflectedValue as? MTDisplay {
+          return accent
+        }
+      }
+      if let list = display as? MTMathListDisplay {
+        for child in list.subDisplays {
+          if let accent = reflectedAccent(in: child) {
+            return accent
+          }
+        }
+      }
+      return nil
+    }
+
+    for variable in ["x", "y"] {
+      let hatLabel = MTMathUILabel(frame: .zero)
+      hatLabel.font = mathFont
+      hatLabel.labelMode = .display
+      hatLabel.latex = "\\hat{\(variable)}"
+      XCTAssertNil(hatLabel.error)
+      let hatSize = hatLabel.sizeThatFits(.zero)
+      XCTAssertGreaterThan(hatSize.width, 0)
+      XCTAssertGreaterThan(hatSize.height, 0)
+      hatLabel.frame = CGRect(origin: .zero, size: hatSize)
+      #if os(macOS)
+      hatLabel.layout()
+      #else
+      hatLabel.layoutIfNeeded()
+      #endif
+      let hatDisplay = try XCTUnwrap(hatLabel.displayList)
+      let accent = try XCTUnwrap(reflectedAccent(in: hatDisplay), "\\hat{\(variable)}")
+      XCTAssertGreaterThan(accent.width, 0)
+      XCTAssertGreaterThan(accent.ascent + accent.descent, 0)
+    }
+
     let displayFormula = #"\boxed{\widehat{wage}}，\overrightarrow{AB} + \sum_{i=1}^{n} i + x_{\text{中文}}"#
     for size: CGFloat in [16, 13] {
       let label = MTMathUILabel(frame: .zero)

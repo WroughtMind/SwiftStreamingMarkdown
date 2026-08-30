@@ -67,7 +67,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/WroughtMind/SwiftMath",
       "state" : {
-        "revision" : "62b4ccad3faf21806525cc3788f097858b99628f"
+        "revision" : "c7830ce1ee79de0c57e4eac1ed3405b1ec790898"
       }
     },
     {
